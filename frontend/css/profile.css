@@ -1,0 +1,82 @@
+/* ===================== MODAL DE PERFIL ===================== */
+
+#profile-overlay{
+  position:fixed;inset:0;z-index:60;
+  background:rgba(0,0,0,0.55);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;
+  transition:opacity .25s ease;
+}
+#profile-overlay.open{opacity:1;pointer-events:auto;}
+
+#profile-modal{
+  width:min(560px, 92vw);
+  height:min(640px, 86vh);
+  background:var(--bg-panel);
+  border:1px solid var(--line);
+  border-radius:18px;
+  position:relative;
+  overflow-y:auto;
+  padding:30px 32px 36px 32px;
+  transform:scale(.96);
+  transition:transform .25s ease;
+  box-shadow:0 20px 60px rgba(0,0,0,0.5);
+}
+#profile-overlay.open #profile-modal{transform:scale(1);}
+
+#profile-close{
+  position:absolute;top:16px;right:16px;
+  width:30px;height:30px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid var(--line);
+  color:var(--text-mid);cursor:pointer;
+  transition:background .2s ease,color .2s ease;
+}
+#profile-close:hover{background:var(--bg-elevated);color:var(--text-hi);}
+#profile-close svg{width:14px;height:14px;}
+
+#profile-header h2{
+  font-family:var(--font-display);font-weight:500;font-size:20px;
+  color:var(--text-hi);margin-bottom:4px;
+}
+#profile-header p{font-size:12.5px;color:var(--text-low);margin-bottom:24px;}
+
+.profile-group{margin-bottom:22px;}
+.profile-label{
+  display:block;font-size:12.5px;color:var(--text-mid);margin-bottom:9px;
+}
+
+.profile-input,
+.profile-textarea{
+  width:100%;
+  background:var(--bg-elevated);border:1px solid var(--line);
+  color:var(--text-hi);font-family:var(--font-body);font-size:13.5px;
+  padding:10px 13px;border-radius:10px;
+  outline:none;resize:none;
+  transition:border-color .2s ease;
+}
+.profile-input:focus,
+.profile-textarea:focus{border-color:var(--purple-soft);}
+.profile-textarea{line-height:1.5;margin-top:10px;}
+.profile-textarea.hidden{display:none;}
+
+/* --- Escala numérica (1..N + opcional "Personalizado") --- */
+.scale-row{display:flex;gap:8px;flex-wrap:wrap;}
+.scale-btn{
+  width:38px;height:38px;border-radius:10px;
+  border:1px solid var(--line);background:var(--bg-elevated);
+  color:var(--text-mid);font-size:13px;font-family:var(--font-mono);cursor:pointer;
+  transition:all .2s ease;
+}
+.scale-btn[data-value="custom"]{
+  width:auto;padding:0 14px;font-family:var(--font-body);font-size:12.5px;
+}
+.scale-btn:hover{color:var(--text-hi);border-color:var(--purple-soft);}
+.scale-btn.active{background:var(--purple-soft);border-color:var(--purple);color:var(--text-hi);}
+
+.scale-caption{
+  display:flex;justify-content:space-between;
+  font-size:11px;color:var(--text-low);margin-top:7px;
+}
+
+#memory-row{border-top:1px solid var(--line);padding-top:16px;margin-top:6px;}

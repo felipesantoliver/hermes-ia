@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="css/layout.css">
 <link rel="stylesheet" href="css/chat.css">
 <link rel="stylesheet" href="css/settings.css">
+<link rel="stylesheet" href="css/profile.css">
 </head>
 <body data-theme="dark">
 
@@ -235,6 +236,122 @@
     </div>
   </div>
 
+  <!-- ============ MODAL DE PERFIL ============ -->
+  <div id="profile-overlay">
+    <div id="profile-modal">
+
+      <button id="profile-close" title="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+
+      <div id="profile-header">
+        <h2>Perfil</h2>
+        <p>Personalize como o Hermes fala com você.</p>
+      </div>
+
+      <div id="profile-body">
+
+        <!-- ---------- Como o Hermes deve te chamar ---------- -->
+        <div class="profile-group">
+          <label class="profile-label" for="user-name">Como o Hermes deve te chamar</label>
+          <input type="text" id="user-name" class="profile-input" placeholder="Ex: Felipe">
+        </div>
+
+        <!-- ---------- Sobre você ---------- -->
+        <div class="profile-group">
+          <label class="profile-label" for="user-about">Fale sobre você</label>
+          <textarea id="user-about" class="profile-textarea" rows="3" placeholder="Sua profissão, interesses, contexto técnico... o Hermes usa isso para alinhar as respostas a você."></textarea>
+        </div>
+
+        <!-- ---------- Apelido do Hermes ---------- -->
+        <div class="profile-group">
+          <label class="profile-label" for="hermes-nickname">Apelido do Hermes</label>
+          <input type="text" id="hermes-nickname" class="profile-input" placeholder="Ex: Hermes, H, Assistente...">
+        </div>
+
+        <!-- ---------- Personalidade ---------- -->
+        <div class="profile-group">
+          <label class="profile-label">Personalidade</label>
+          <div class="chip-row" id="personality-chips">
+            <button class="settings-chip active" data-personality="amigavel">Amigável</button>
+            <button class="settings-chip" data-personality="sarcastico">Sarcástico</button>
+            <button class="settings-chip" data-personality="direto">Direto</button>
+            <button class="settings-chip" data-personality="tecnico">Técnico</button>
+            <button class="settings-chip" data-personality="personalizado">Personalizar</button>
+          </div>
+          <textarea id="personality-custom" class="profile-textarea hidden" rows="3" placeholder="Descreva como você quer que o Hermes se comporte..."></textarea>
+        </div>
+
+        <!-- ---------- Filtro de conteúdo ---------- -->
+        <div class="profile-group">
+          <label class="profile-label">Filtro de conteúdo</label>
+          <div class="scale-row" id="filter-scale" data-max="4">
+            <button class="scale-btn active" data-value="1">1</button>
+            <button class="scale-btn" data-value="2">2</button>
+            <button class="scale-btn" data-value="3">3</button>
+            <button class="scale-btn" data-value="4">4</button>
+            <button class="scale-btn" data-value="custom">Personalizado</button>
+          </div>
+          <div class="scale-caption">
+            <span>Sem filtro</span><span>Mais restrito</span>
+          </div>
+          <textarea id="filter-custom" class="profile-textarea hidden" rows="2" placeholder="Descreva o que o Hermes não deve falar..."></textarea>
+        </div>
+
+        <!-- ---------- Acolhimento ---------- -->
+        <div class="profile-group">
+          <label class="profile-label">Nível de acolhimento</label>
+          <div class="scale-row" id="warmth-scale" data-max="3">
+            <button class="scale-btn" data-value="1">1</button>
+            <button class="scale-btn active" data-value="2">2</button>
+            <button class="scale-btn" data-value="3">3</button>
+          </div>
+          <div class="scale-caption">
+            <span>Neutro</span><span>Muito acolhedor</span>
+          </div>
+        </div>
+
+        <!-- ---------- Entusiasmo ---------- -->
+        <div class="profile-group">
+          <label class="profile-label">Nível de entusiasmo</label>
+          <div class="scale-row" id="enthusiasm-scale" data-max="3">
+            <button class="scale-btn" data-value="1">1</button>
+            <button class="scale-btn active" data-value="2">2</button>
+            <button class="scale-btn" data-value="3">3</button>
+          </div>
+          <div class="scale-caption">
+            <span>Comedido</span><span>Muito entusiasmado</span>
+          </div>
+        </div>
+
+        <!-- ---------- Uso de emojis ---------- -->
+        <div class="profile-group">
+          <label class="profile-label">Uso de emojis</label>
+          <div class="scale-row" id="emoji-scale" data-max="3">
+            <button class="scale-btn" data-value="1">1</button>
+            <button class="scale-btn active" data-value="2">2</button>
+            <button class="scale-btn" data-value="3">3</button>
+          </div>
+          <div class="scale-caption">
+            <span>Poucos</span><span>Muitos</span>
+          </div>
+        </div>
+
+        <!-- ---------- Referenciar memórias salvas ---------- -->
+        <div class="settings-row" id="memory-row">
+          <div>
+            <div class="settings-row-title">Referenciar memórias salvas</div>
+            <div class="settings-row-desc">Permite que o Hermes use decisões, preferências e contexto de conversas anteriores.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="memory-toggle" checked>
+            <span class="switch-track"></span>
+          </label>
+        </div>
+
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -242,5 +359,6 @@
 <script src="js/ui.js"></script>
 <script src="js/chat.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/profile.js"></script>
 </body>
 </html>
