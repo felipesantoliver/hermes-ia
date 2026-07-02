@@ -10,6 +10,7 @@ from .db import db_cursor, now_iso, new_id
 from .orchestrator.loop import AgentLoop
 from .orchestrator.router import select_agent
 from .llm import LLMClient, get_llm_client
+from .profile_prompt import build_profile_system_section
 
 router = APIRouter()
 
@@ -56,21 +57,11 @@ async def chat_endpoint(
                     "Sua missão é ajudar o usuário a construir software, firmware e sistemas. " \
                     "Responda de forma clara, técnica e direta."
 
-    # Adicionar personalidade do perfil
-    if profile:
-        personality = profile.get("personality")
-        if personality == "amigavel":
-            system_prompt += " Seja amigável e acolhedor."
-        elif personality == "sarcastico":
-            system_prompt += " Seja sarcástico e irônico."
-        elif personality == "direto":
-            system_prompt += " Seja direto e objetivo, sem rodeios."
-        elif personality == "tecnico":
-            system_prompt += " Seja altamente técnico, use jargões e detalhes."
-        elif personality == "personalizado" and profile.get("personality_custom"):
-            system_prompt += f" Siga estas instruções: {profile['personality_custom']}"
-
-        # Nível de acolhimento, entusiasmo, emojis (aplicado durante a geração, não aqui)
+    # Adicionar seção derivada do perfil do usuário (nome, apelido, sobre,
+    # personalidade, acolhimento/entusiasmo/emojis, filtro de conteúdo) —
+    # inclui sempre o piso de segurança fixo, mesmo sem perfil configurado.
+    profile_dict = dict(profile) if profile else None
+    system_prompt += "\n\n" + build_profile_system_section(profile_dict)
 
     # 4. Adicionar instruções/persona do projeto (se houver)
     if payload.project_id:
@@ -78,9 +69,9 @@ async def chat_endpoint(
             cur.execute("SELECT instructions, persona FROM projects WHERE id = ?", (payload.project_id,))
             proj = cur.fetchone()
             if proj:
-                if proj.get("instructions"):
+                if proj["instructions"]:
                     system_prompt += f"\n\nInstruções do projeto: {proj['instructions']}"
-                if proj.get("persona"):
+                if proj["persona"]:
                     system_prompt += f"\n\nPersona do projeto: {proj['persona']}"
 
     # 5. Ajustar tom conforme mode
