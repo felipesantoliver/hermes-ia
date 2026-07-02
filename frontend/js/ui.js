@@ -10,12 +10,24 @@ document.getElementById('collapse-btn').addEventListener('click', () => {
   sidebar.classList.toggle('collapsed');
 });
 
-document.getElementById('new-chat-btn').addEventListener('click', () => {
-  document.getElementById('msg-col').innerHTML = `
-    <div class="empty-state" id="empty-state">
-      <h1>O que vamos construir hoje?</h1>
-      <p>Escreva uma mensagem para acordar o núcleo. Hermes escuta, pensa e responde com clareza.</p>
-    </div>`;
+/* ---------- Novo chat (com chamada à API) ---------- */
+document.getElementById('new-chat-btn').addEventListener('click', async () => {
+  try {
+    const res = await fetch(HermesState.API_BASE + '/chats/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Nova conversa', project_id: null }),
+    });
+    if (!res.ok) throw new Error('Falha ao criar chat');
+    const chat = await res.json();
+
+    HermesState.activeProjectId = null;
+    window.HermesChats.loadChat(chat);
+    window.HermesChats.showView('chat');
+    window.HermesChats.renderSidebar();
+  } catch (err) {
+    console.error('[Hermes] Erro ao criar novo chat:', err);
+  }
 });
 
 /* ---------- Tema claro/escuro ---------- */

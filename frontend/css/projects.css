@@ -1,0 +1,170 @@
+/* ===================== VIEWS (CHAT / PROJETOS) ===================== */
+.view{display:none;flex:1;flex-direction:column;min-height:0;height:100%;}
+.view.active{display:flex;}
+#view-projects{overflow-y:auto;padding:32px 40px;}
+
+/* ===================== CABEÇALHO DA LISTA DE PROJETOS ===================== */
+.projects-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:20px;
+}
+.projects-header h1{
+  font-family:var(--font-display);font-weight:500;font-size:24px;color:var(--text-hi);
+}
+.primary-btn{
+  background:linear-gradient(145deg,var(--purple),#6b3f82);
+  color:#fff;border:none;font-family:var(--font-body);font-size:13px;
+  padding:10px 18px;border-radius:10px;cursor:pointer;
+  transition:transform .15s ease, opacity .15s ease;
+}
+.primary-btn:hover{transform:translateY(-1px);}
+.ghost-btn{
+  background:transparent;border:1px solid var(--line);color:var(--text-mid);
+  font-size:13px;padding:9px 14px;border-radius:10px;cursor:pointer;
+  transition:color .2s ease,border-color .2s ease;
+}
+.ghost-btn:hover{color:var(--text-hi);border-color:var(--purple-soft);}
+
+/* ---- Form de novo projeto ---- */
+.new-project-form{
+  background:var(--bg-elevated);border:1px solid var(--line);border-radius:14px;
+  padding:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:10px;
+}
+.new-project-form.hidden{display:none;}
+.new-project-form input,
+.new-project-form textarea{
+  background:var(--bg-panel);border:1px solid var(--line);border-radius:10px;
+  color:var(--text-hi);font-family:var(--font-body);font-size:13.5px;
+  padding:10px 12px;resize:vertical;outline:none;
+}
+.new-project-actions{display:flex;justify-content:flex-end;gap:8px;}
+
+/* ---- Grid de projetos ---- */
+.projects-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;
+}
+.project-card{
+  background:var(--bg-elevated);border:1px solid var(--line);border-radius:14px;
+  padding:18px;cursor:pointer;transition:border-color .2s ease, transform .15s ease;
+}
+.project-card:hover{border-color:var(--purple-soft);transform:translateY(-2px);}
+.project-card-icon{width:22px;height:22px;color:var(--purple);margin-bottom:10px;}
+.project-card-name{font-family:var(--font-display);font-size:15px;color:var(--text-hi);margin-bottom:6px;}
+.project-card-desc{
+  font-size:12.5px;color:var(--text-mid);line-height:1.5;margin-bottom:12px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.project-card-meta{font-size:11px;color:var(--text-low);letter-spacing:.03em;}
+
+/* ---- Detalhe do projeto ---- */
+.project-detail-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;}
+.project-detail-header h1{font-family:var(--font-display);font-weight:500;font-size:22px;color:var(--text-hi);}
+
+.project-config-block{
+  background:var(--bg-elevated);border:1px solid var(--line);border-radius:14px;
+  padding:18px;margin-bottom:16px;
+}
+
+/* ---- Escopo de memória (chips explicativos) ---- */
+.memory-scope-row{flex-wrap:wrap;gap:10px;}
+.memory-chip{
+  flex-direction:column;align-items:flex-start;text-align:left;
+  max-width:220px;padding:12px 14px;border-radius:12px;
+}
+.chip-hint{
+  display:block;font-size:11px;color:var(--text-low);margin-top:4px;line-height:1.4;
+  white-space:normal;
+}
+.memory-chip.active .chip-hint{color:var(--text-mid);}
+
+/* ---- Lista de arquivos de referência ---- */
+.project-files-list{margin-top:12px;display:flex;flex-direction:column;gap:6px;}
+.project-file-row{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 10px;border-radius:9px;background:var(--bg-panel);border:1px solid var(--line);
+}
+.project-file-name{flex:1;font-size:12.5px;color:var(--text-hi);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.project-file-size{font-size:11px;color:var(--text-low);font-family:var(--font-mono);}
+.file-remove-btn{
+  background:none;border:none;color:var(--text-low);cursor:pointer;font-size:13px;
+  transition:color .2s ease;
+}
+.file-remove-btn:hover{color:#e35b5b;}
+
+/* ---- Lista de chats do projeto ---- */
+.project-chats-list{margin-top:14px;display:flex;flex-direction:column;gap:2px;}
+
+/* ===================== ITENS DE CHAT (SIDEBAR + PROJETO) ===================== */
+.chat-item{position:relative;}
+.chat-item-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chat-menu-btn{
+  opacity:0;background:none;border:none;color:var(--text-low);cursor:pointer;
+  font-size:15px;padding:2px 6px;border-radius:6px;transition:opacity .15s ease, background .15s ease;
+}
+.chat-item:hover .chat-menu-btn{opacity:1;}
+.chat-menu-btn:hover{background:var(--bg-panel);color:var(--text-hi);}
+.chat-list-empty{font-size:12px;color:var(--text-low);padding:8px 10px;}
+
+#recent-title{
+  font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--text-low);margin:14px 6px 10px 6px;
+}
+#recent-list{display:flex;flex-direction:column;gap:2px;overflow-y:auto;}
+
+/* ---- Menu de contexto flutuante ---- */
+.chat-context-menu{
+  position:fixed;z-index:80;min-width:180px;
+  background:var(--bg-elevated);border:1px solid var(--line);border-radius:12px;
+  padding:6px;box-shadow:0 12px 30px rgba(0,0,0,0.4);
+  display:flex;flex-direction:column;gap:1px;
+}
+.ctx-menu-item{
+  text-align:left;background:none;border:none;padding:9px 10px;border-radius:8px;
+  font-size:13px;color:var(--text-mid);cursor:pointer;transition:background .15s ease,color .15s ease;
+}
+.ctx-menu-item:hover{background:var(--bg-panel);color:var(--text-hi);}
+.ctx-menu-item.danger{color:#e35b5b;}
+.ctx-menu-item.danger:hover{background:rgba(220,60,60,0.12);}
+.ctx-menu-empty{font-size:12px;color:var(--text-low);padding:8px 10px;}
+.ctx-submenu{
+  margin-top:2px;padding-top:4px;border-top:1px solid var(--line);
+  display:flex;flex-direction:column;gap:1px;max-height:180px;overflow-y:auto;
+}
+
+/* ===================== OVERLAY DE BUSCA ===================== */
+#search-overlay{
+  position:fixed;inset:0;z-index:60;
+  background:rgba(0,0,0,0.55);
+  display:flex;align-items:flex-start;justify-content:center;padding-top:12vh;
+  opacity:0;pointer-events:none;transition:opacity .2s ease;
+}
+#search-overlay.open{opacity:1;pointer-events:auto;}
+#search-modal{
+  width:min(520px,90vw);max-height:60vh;
+  background:var(--bg-panel);border:1px solid var(--line);border-radius:16px;
+  overflow:hidden;transform:translateY(-8px);transition:transform .2s ease;
+  box-shadow:0 20px 60px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+#search-overlay.open #search-modal{transform:translateY(0);}
+#search-input-row{
+  display:flex;align-items:center;gap:10px;padding:14px 16px;
+  border-bottom:1px solid var(--line);color:var(--text-mid);
+}
+#search-input-row svg{width:16px;height:16px;flex-shrink:0;}
+#search-input{
+  flex:1;background:none;border:none;outline:none;color:var(--text-hi);
+  font-family:var(--font-body);font-size:14px;
+}
+#search-results{overflow-y:auto;padding:8px;}
+.search-result-item{
+  display:flex;align-items:center;gap:10px;padding:10px 10px;border-radius:9px;
+  font-size:13px;color:var(--text-mid);cursor:pointer;
+  transition:background .15s ease,color .15s ease;
+}
+.search-result-item:hover{background:var(--bg-elevated);color:var(--text-hi);}
+
+@media(max-width:640px){
+  #view-projects{padding:20px;}
+  .projects-grid{grid-template-columns:1fr;}
+}

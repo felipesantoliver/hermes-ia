@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="css/chat.css">
 <link rel="stylesheet" href="css/settings.css">
 <link rel="stylesheet" href="css/profile.css">
+<link rel="stylesheet" href="css/projects.css">
 </head>
 <body data-theme="dark">
 
@@ -38,11 +39,11 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
         <span class="label-text">Novo chat</span>
       </div>
-      <div class="side-item">
+      <div class="side-item" id="search-chat-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
         <span class="label-text">Buscar conversa</span>
       </div>
-      <div class="side-item">
+      <div class="side-item" id="projects-nav-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7l3-3h5l2 2h8v11a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
         <span class="label-text">Projetos</span>
       </div>
@@ -63,60 +64,69 @@
     <div id="pinned-title">Fixados</div>
     <div id="pinned-list"></div>
 
+    <div id="recent-title">Recentes</div>
+    <div id="recent-list"></div>
+
     <div id="sidebar-footer">
       <div id="footer-text"><span class="eyebrow">Criado por</span><strong>Felipe Sant'oliver</strong></div>
     </div>
   </aside>
 
   <main id="main">
-    <header id="chat-header">
-      <div id="agent-title">Hermes</div>
-      <div class="header-actions">
-        <button class="icon-btn" id="theme-btn" title="Alternar tema">
-          <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-        </button>
-        <button class="icon-btn" id="profile-btn" title="Perfil">Perfil</button>
-      </div>
-    </header>
 
-    <div id="messages">
-      <div class="msg-col" id="msg-col">
-        <div class="empty-state" id="empty-state">
-          <h1>O que vamos construir hoje?</h1>
-          <p>Escreva uma mensagem para acordar o núcleo. Hermes escuta, pensa e responde com clareza.</p>
+    <section id="view-chat" class="view active">
+      <header id="chat-header">
+        <div id="agent-title">Hermes</div>
+        <div class="header-actions">
+          <button class="icon-btn" id="theme-btn" title="Alternar tema">
+            <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+          </button>
+          <button class="icon-btn" id="profile-btn" title="Perfil">Perfil</button>
         </div>
-      </div>
-    </div>
+      </header>
 
-    <div id="input-wrap">
-      <div id="input-shell">
-        <div id="text-row">
-          <textarea id="msg-input" rows="1" placeholder="Converse com Hermes..."></textarea>
-          <div id="input-icons">
-            <button class="input-icon-btn" title="Microfone">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0M12 19v3"/></svg>
-            </button>
-            <button class="input-icon-btn" title="Anexar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21.44 11.05L12.25 20.24a5 5 0 01-7.07-7.07l8.49-8.49a3.5 3.5 0 014.95 4.95l-8.49 8.49a2 2 0 01-2.83-2.83l7.78-7.78"/></svg>
-            </button>
-            <button class="input-icon-btn" id="send-btn" title="Enviar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-            </button>
-          </div>
-        </div>
-        <div id="mode-row">
-          <div class="mode-chip" id="mode-code">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
-            Modo programação
-          </div>
-          <div class="mode-chip" id="mode-think">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9.5 2a5.5 5.5 0 00-3 10.1V15a1 1 0 001 1h5a1 1 0 001-1v-2.9A5.5 5.5 0 009.5 2z" transform="translate(2.5 2)"/><path d="M9 21h6M10 18h4"/></svg>
-            Modo pensador
+      <div id="messages">
+        <div class="msg-col" id="msg-col">
+          <div class="empty-state" id="empty-state">
+            <h1>O que vamos construir hoje?</h1>
+            <p>Escreva uma mensagem para acordar o núcleo. Hermes escuta, pensa e responde com clareza.</p>
           </div>
         </div>
       </div>
-      <div id="hint">Hermes pode cometer erros. Verifique informações importantes.</div>
-    </div>
+
+      <div id="input-wrap">
+        <div id="input-shell">
+          <div id="text-row">
+            <textarea id="msg-input" rows="1" placeholder="Converse com Hermes..."></textarea>
+            <div id="input-icons">
+              <button class="input-icon-btn" title="Microfone">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0M12 19v3"/></svg>
+              </button>
+              <button class="input-icon-btn" title="Anexar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21.44 11.05L12.25 20.24a5 5 0 01-7.07-7.07l8.49-8.49a3.5 3.5 0 014.95 4.95l-8.49 8.49a2 2 0 01-2.83-2.83l7.78-7.78"/></svg>
+              </button>
+              <button class="input-icon-btn" id="send-btn" title="Enviar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="mode-row">
+            <div class="mode-chip" id="mode-code">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+              Modo programação
+            </div>
+            <div class="mode-chip" id="mode-think">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9.5 2a5.5 5.5 0 00-3 10.1V15a1 1 0 001 1h5a1 1 0 001-1v-2.9A5.5 5.5 0 009.5 2z" transform="translate(2.5 2)"/><path d="M9 21h6M10 18h4"/></svg>
+              Modo pensador
+            </div>
+          </div>
+        </div>
+        <div id="hint">Hermes pode cometer erros. Verifique informações importantes.</div>
+      </div>
+    </section>
+
+    <section id="view-projects" class="view"></section>
+
   </main>
 
   <!-- ============ MODAL DE CONFIGURAÇÕES ============ -->
@@ -352,13 +362,27 @@
       </div>
     </div>
   </div>
+
+  <!-- ============ OVERLAY DE BUSCA DE CONVERSAS ============ -->
+  <div id="search-overlay">
+    <div id="search-modal">
+      <div id="search-input-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" id="search-input" placeholder="Buscar conversas...">
+      </div>
+      <div id="search-results"></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/state.js"></script>
 <script src="js/spheres.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/chat.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/profile.js"></script>
+<script src="js/chats.js"></script>
+<script src="js/projects.js"></script>
 </body>
 </html>
