@@ -7,6 +7,8 @@ from ..llm import LLMClient
 from ..tools.registry import get_tool, list_tools, to_llm_schema
 from ..tools.base import ToolResult
 from ..config import settings
+from ..db import DATA_DIR
+from ..memory.context_builder import build_memory_context
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,7 @@ class AgentLoop:
         project_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         mode: Optional[str] = None,
+        agent_type: Optional[str] = None,
     ) -> str:
         """
         Executa o loop do agente:
@@ -44,7 +47,19 @@ class AgentLoop:
         if sys_msg:
             sys_msg["content"] += "\n\nVocê tem acesso às seguintes ferramentas. Se precisar executar uma ação, responda com um JSON contendo o nome da tool e seus parâmetros. Caso contrário, responda normalmente."
         else:
-            conv.insert(0, {"role": "system", "content": "Você tem acesso a ferramentas. Responda com JSON para usá-las ou texto normal para responder."})
+            sys_msg = {"role": "system", "content": "Você tem acesso a ferramentas. Responda com JSON para usá-las ou texto normal para responder."}
+            conv.insert(0, sys_msg)
+
+        # Injetar memória (arquitetural > conversacional > código), respeitando
+        # memory_scope do projeto e o disjuntor use_saved_memory do perfil.
+        try:
+            memory_block = build_memory_context(project_id=project_id, chat_id=chat_id)
+        except Exception as e:
+            logger.warning(f"Falha ao montar contexto de memória: {e}")
+            memory_block = ""
+        if memory_block:
+            sys_msg["content"] += "\n\n" + memory_block
+
 
         # Loop principal
         iteration = 0
@@ -95,7 +110,7 @@ class AgentLoop:
 
     def _log_conversation(self, chat_id, project_id, messages, final_response):
         """Salva log em JSON lines."""
-        log_dir = Path(settings.DATA_DIR) / "logs"
+        log_dir = Path(DATA_DIR) / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         if project_id:
             log_file = log_dir / f"{project_id}.jsonl"

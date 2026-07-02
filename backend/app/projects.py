@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel, Field
 
 from .db import db_cursor, new_id, now_iso, PROJECTS_FILES_DIR
+from .memory import store as memory_store
+from .memory.context_builder import build_memory_context
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -252,3 +254,27 @@ def list_project_chats(project_id: str):
             (project_id,),
         )
         return [_row_to_chat(r) for r in cur.fetchall()]
+
+@router.get("/{project_id}/memory")
+def debug_project_memory(project_id: str):
+    """
+    Rota de debug: mostra a memória crua das 3 camadas para o projeto
+    (sem aplicar orçamento de tokens) e o bloco final que seria
+    efetivamente injetado no system prompt, já respeitando memory_scope
+    e o disjuntor use_saved_memory.
+    """
+    with db_cursor() as cur:
+        proj = _get_project_or_404(cur, project_id)
+
+    scope = proj["memory_scope"]
+    include_external = scope == "isolated_read_external"
+
+    raw = {
+        "memory_scope": scope,
+        "use_saved_memory": memory_store.get_use_saved_memory(),
+        "architectural_memory": memory_store.list_architectural(project_id, include_external=include_external),
+        "conversation_memory": memory_store.list_conversation_memory(project_id, include_external=include_external),
+        "code_memory": memory_store.list_code_memory(project_id, include_external=include_external),
+    }
+    raw["resolved_context"] = build_memory_context(project_id=project_id, chat_id=None)
+    return raw

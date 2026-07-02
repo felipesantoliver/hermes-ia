@@ -152,6 +152,9 @@ def download_loose_file(file_id: str):
     with db_cursor() as cur:
         cur.execute("SELECT * FROM loose_files WHERE id = ?", (file_id,))
         row = cur.fetchone()
+        if row is None:
+            cur.execute("SELECT * FROM project_files WHERE id = ?", (file_id,))
+            row = cur.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
     path = Path(row["stored_path"])
@@ -165,9 +168,14 @@ def delete_loose_file(file_id: str):
     with db_cursor() as cur:
         cur.execute("SELECT * FROM loose_files WHERE id = ?", (file_id,))
         row = cur.fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Arquivo não encontrado")
-        cur.execute("DELETE FROM loose_files WHERE id = ?", (file_id,))
+        if row is not None:
+            cur.execute("DELETE FROM loose_files WHERE id = ?", (file_id,))
+        else:
+            cur.execute("SELECT * FROM project_files WHERE id = ?", (file_id,))
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+            cur.execute("DELETE FROM project_files WHERE id = ?", (file_id,))
     path = Path(row["stored_path"])
     if path.exists():
         path.unlink()
