@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import asyncio
 from app.llm import get_llm_client
 from app.orchestrator.loop import AgentLoop

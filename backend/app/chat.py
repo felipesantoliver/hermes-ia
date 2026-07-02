@@ -63,16 +63,17 @@ async def chat_endpoint(
     profile_dict = dict(profile) if profile else None
     system_prompt += "\n\n" + build_profile_system_section(profile_dict)
 
-    # 4. Adicionar instruções/persona do projeto (se houver)
+    # 4. Adicionar instruções/persona do projeto (se houver) — 404 se o projeto não existir
     if payload.project_id:
         with db_cursor() as cur:
             cur.execute("SELECT instructions, persona FROM projects WHERE id = ?", (payload.project_id,))
             proj = cur.fetchone()
-            if proj:
-                if proj["instructions"]:
-                    system_prompt += f"\n\nInstruções do projeto: {proj['instructions']}"
-                if proj["persona"]:
-                    system_prompt += f"\n\nPersona do projeto: {proj['persona']}"
+            if not proj:
+                raise HTTPException(status_code=404, detail="Projeto não encontrado")
+            if proj["instructions"]:
+                system_prompt += f"\n\nInstruções do projeto: {proj['instructions']}"
+            if proj["persona"]:
+                system_prompt += f"\n\nPersona do projeto: {proj['persona']}"
 
     # 5. Ajustar tom conforme mode
     if payload.mode == "code":

@@ -33,11 +33,15 @@ app.add_middleware(
 
 
 # --------------------- ROUTERS ---------------------
+# Cada router já declara seu próprio prefix (ver app/projects.py, chats.py,
+# files.py, profile.py) — NÃO repetir o prefix aqui, senão as rotas ficam
+# duplicadas (ex: /projects/projects/...) e o frontend, que chama /projects/,
+# /chats/, /files/, /profile/ diretamente, recebe 404 em tudo.
 app.include_router(chat_router, prefix="/chat", tags=["chat"])
-app.include_router(projects_router, prefix="/projects", tags=["projects"])
-app.include_router(chats_router, prefix="/chats", tags=["chats"])
-app.include_router(profile_router, prefix="/profile", tags=["profile"])
-app.include_router(files_router, prefix="/files", tags=["files"])
+app.include_router(projects_router, tags=["projects"])
+app.include_router(chats_router, tags=["chats"])
+app.include_router(profile_router, tags=["profile"])
+app.include_router(files_router, tags=["files"])
 
 
 # --------------------- HEALTHCHECK ---------------------

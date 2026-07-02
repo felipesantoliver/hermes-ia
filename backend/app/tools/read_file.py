@@ -2,8 +2,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 from .base import Tool, ToolResult
-from ..config import settings
-from ..db import db_cursor
+from ..db import db_cursor, PROJECTS_FILES_DIR
 
 class ReadFileTool(Tool):
     @property
@@ -32,7 +31,7 @@ class ReadFileTool(Tool):
             return ToolResult(success=False, error="project_id e file_path são obrigatórios")
 
         # Sanitizar caminho para evitar path traversal
-        base_dir = Path(settings.DATA_DIR) / "projects" / project_id / "files"
+        base_dir = PROJECTS_FILES_DIR / project_id / "files"
         # A pasta "files" é onde armazenamos os arquivos do projeto no backend (ver projects.py)
         # Mas o usuário pode querer ler outros arquivos? Vamos restringir à pasta do projeto.
         # Para simplificar, permitimos ler qualquer arquivo dentro da pasta do projeto.
