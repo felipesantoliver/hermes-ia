@@ -1,7 +1,7 @@
 # Hermes AI
 
 > **Versão atual:** `v0.1.0` — *Hermes Core (Local Edition)*
-> **Status:** 🧪 Planejamento inicial (MVP ainda não iniciado)
+> **Status:** 🧪 Planejamento inicial 
 
 Assistente pessoal de IA **local-first**, focado em **gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio**.
 
