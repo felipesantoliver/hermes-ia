@@ -1,0 +1,51 @@
+/* ===================== VARIÁVEIS, RESET E RESPONSIVIDADE ===================== */
+
+:root{
+  --bg-deep:#07060a;
+  --bg-panel:#0d0b12;
+  --bg-elevated:#141019;
+  --line:rgba(255,255,255,0.07);
+  --purple:#9b59b6;
+  --purple-soft:rgba(155,89,182,0.35);
+  --purple-glow:rgba(155,89,182,0.55);
+  --text-hi:#f1ecf5;
+  --text-mid:#a79db3;
+  --text-low:#6b6274;
+  --font-display:'Fraunces', 'Georgia', serif;
+  --font-body:'Inter', -apple-system, sans-serif;
+  --font-mono:'JetBrains Mono', monospace;
+}
+
+[data-theme="light"]{
+  --bg-deep:#f3f0f6;
+  --bg-panel:#faf8fb;
+  --bg-elevated:#ffffff;
+  --line:rgba(20,10,30,0.08);
+  --text-hi:#1c1522;
+  --text-mid:#5c5266;
+  --text-low:#9b93a3;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  background:var(--bg-deep);
+  color:var(--text-hi);
+  font-family:var(--font-body);
+  overflow:hidden;
+  transition:background .5s ease,color .5s ease;
+}
+
+::-webkit-scrollbar{width:8px;}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important;transition:none !important;}
+}
+
+/* ---- Responsivo ---- */
+@media(max-width:780px){
+  #sidebar{position:fixed;z-index:40;height:100%;}
+  #sidebar:not(.mobile-open){transform:translateX(-100%);}
+}
