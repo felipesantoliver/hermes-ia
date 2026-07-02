@@ -1,0 +1,159 @@
+/* ===================== MODAL DE CONFIGURAÇÕES ===================== */
+
+/* --- Camada escura por trás do modal --- */
+#settings-overlay{
+  position:fixed;inset:0;z-index:60;
+  background:rgba(0,0,0,0.55);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;
+  transition:opacity .25s ease;
+}
+#settings-overlay.open{opacity:1;pointer-events:auto;}
+
+/* --- Caixa do modal --- */
+#settings-modal{
+  width:min(760px, 92vw);
+  height:min(520px, 82vh);
+  background:var(--bg-panel);
+  border:1px solid var(--line);
+  border-radius:18px;
+  display:flex;
+  overflow:hidden;
+  transform:scale(.96);
+  transition:transform .25s ease;
+  box-shadow:0 20px 60px rgba(0,0,0,0.5);
+}
+#settings-overlay.open #settings-modal{transform:scale(1);}
+
+/* --- Sidebar interna do modal --- */
+#settings-sidebar{
+  width:200px;flex-shrink:0;
+  background:var(--bg-elevated);
+  border-right:1px solid var(--line);
+  padding:20px 12px;
+  display:flex;flex-direction:column;
+}
+#settings-title{
+  font-family:var(--font-display);
+  font-size:15px;letter-spacing:.02em;
+  color:var(--text-hi);
+  padding:4px 10px 18px 10px;
+}
+#settings-nav{display:flex;flex-direction:column;gap:2px;}
+.settings-nav-item{
+  text-align:left;
+  background:none;border:none;
+  padding:9px 10px;border-radius:9px;
+  font-family:var(--font-body);font-size:13px;
+  color:var(--text-mid);cursor:pointer;
+  transition:background .2s ease,color .2s ease;
+}
+.settings-nav-item:hover{background:var(--bg-panel);color:var(--text-hi);}
+.settings-nav-item.active{background:var(--purple-soft);color:var(--text-hi);}
+
+/* --- Área de conteúdo --- */
+#settings-content{
+  flex:1;position:relative;
+  padding:26px 30px;overflow-y:auto;
+}
+#settings-close{
+  position:absolute;top:16px;right:16px;
+  width:30px;height:30px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid var(--line);
+  color:var(--text-mid);cursor:pointer;
+  transition:background .2s ease,color .2s ease;
+}
+#settings-close:hover{background:var(--bg-elevated);color:var(--text-hi);}
+#settings-close svg{width:14px;height:14px;}
+
+.settings-panel{display:none;}
+.settings-panel.active{display:block;animation:panelIn .25s ease;}
+@keyframes panelIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+.settings-panel h2{
+  font-family:var(--font-display);font-weight:500;font-size:19px;
+  color:var(--text-hi);margin-bottom:18px;
+}
+
+.settings-group{margin-bottom:22px;}
+.settings-label{
+  display:block;font-size:12.5px;color:var(--text-mid);margin-bottom:9px;
+}
+
+/* --- Chips de aparência --- */
+.chip-row{display:flex;gap:8px;}
+.settings-chip{
+  padding:8px 15px;border-radius:20px;
+  border:1px solid var(--line);background:var(--bg-elevated);
+  color:var(--text-mid);font-size:12.5px;cursor:pointer;
+  transition:all .2s ease;
+}
+.settings-chip:hover{color:var(--text-hi);border-color:var(--purple-soft);}
+.settings-chip.active{background:var(--purple-soft);border-color:var(--purple);color:var(--text-hi);}
+
+/* --- Select de idioma --- */
+.settings-select{
+  width:100%;max-width:260px;
+  background:var(--bg-elevated);border:1px solid var(--line);
+  color:var(--text-hi);font-family:var(--font-body);font-size:13px;
+  padding:9px 12px;border-radius:10px;cursor:pointer;
+  outline:none;
+}
+
+/* --- Linha padrão (usada em notificações e controle de dados) --- */
+.settings-row{
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+  padding:14px 0;border-bottom:1px solid var(--line);
+}
+.settings-row:last-child{border-bottom:none;}
+.settings-row-title{font-size:13.5px;color:var(--text-hi);margin-bottom:3px;}
+.settings-row-desc{font-size:12px;color:var(--text-low);line-height:1.5;}
+
+/* --- Switch (toggle) --- */
+.switch{position:relative;width:42px;height:24px;flex-shrink:0;cursor:pointer;}
+.switch input{opacity:0;width:0;height:0;}
+.switch-track{
+  position:absolute;inset:0;border-radius:999px;
+  background:var(--bg-elevated);border:1px solid var(--line);
+  transition:background .2s ease, border-color .2s ease;
+}
+.switch-track::before{
+  content:'';position:absolute;top:2px;left:2px;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--text-mid);
+  transition:transform .2s ease, background .2s ease;
+}
+.switch input:checked + .switch-track{background:var(--purple-soft);border-color:var(--purple);}
+.switch input:checked + .switch-track::before{
+  transform:translateX(18px);
+  background:var(--purple);
+}
+
+/* --- Botão de ação destrutiva --- */
+.danger-btn{
+  flex-shrink:0;
+  padding:8px 16px;border-radius:10px;
+  background:rgba(220,60,60,0.12);
+  border:1px solid rgba(220,60,60,0.35);
+  color:#e35b5b;font-size:12.5px;cursor:pointer;
+  transition:background .2s ease;
+}
+.danger-btn:hover{background:rgba(220,60,60,0.22);}
+
+/* --- Slider de armazenamento --- */
+.slider-row{display:flex;align-items:center;gap:14px;margin-bottom:8px;}
+#memory-slider{
+  flex:1;max-width:280px;accent-color:var(--purple);cursor:pointer;
+}
+#memory-value{
+  font-family:var(--font-mono);font-size:12.5px;color:var(--text-hi);
+  min-width:44px;
+}
+
+@media(max-width:640px){
+  #settings-modal{flex-direction:column;height:88vh;}
+  #settings-sidebar{width:100%;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line);}
+  #settings-title{display:none;}
+  #settings-nav{flex-direction:row;}
+}

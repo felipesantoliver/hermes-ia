@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="css/theme.css">
 <link rel="stylesheet" href="css/layout.css">
 <link rel="stylesheet" href="css/chat.css">
+<link rel="stylesheet" href="css/settings.css">
 </head>
 <body data-theme="dark">
 
@@ -116,11 +117,130 @@
       <div id="hint">Hermes pode cometer erros. Verifique informações importantes.</div>
     </div>
   </main>
+
+  <!-- ============ MODAL DE CONFIGURAÇÕES ============ -->
+  <div id="settings-overlay">
+    <div id="settings-modal">
+
+      <aside id="settings-sidebar">
+        <div id="settings-title">Configurações</div>
+        <nav id="settings-nav">
+          <button class="settings-nav-item active" data-panel="geral">Geral</button>
+          <button class="settings-nav-item" data-panel="notificacoes">Notificações</button>
+          <button class="settings-nav-item" data-panel="dados">Controle de dados</button>
+          <button class="settings-nav-item" data-panel="armazenamento">Armazenamento</button>
+          <button class="settings-nav-item" data-panel="manual">Manual</button>
+        </nav>
+      </aside>
+
+      <section id="settings-content">
+        <button id="settings-close" title="Fechar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+
+        <!-- ---------- GERAL ---------- -->
+        <div class="settings-panel active" id="panel-geral">
+          <h2>Geral</h2>
+
+          <div class="settings-group">
+            <label class="settings-label">Aparência</label>
+            <div class="chip-row" id="appearance-chips">
+              <button class="settings-chip" data-theme-choice="light">Claro</button>
+              <button class="settings-chip active" data-theme-choice="dark">Escuro</button>
+              <button class="settings-chip" data-theme-choice="system">Sistema</button>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <label class="settings-label" for="language-select">Idioma</label>
+            <select id="language-select" class="settings-select">
+              <option value="pt-br">Português (Brasil)</option>
+              <option value="en">English</option>
+              <option value="es">Español</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ---------- NOTIFICAÇÕES ---------- -->
+        <div class="settings-panel" id="panel-notificacoes">
+          <h2>Notificações</h2>
+
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-title">Ativar push ao terminar resposta</div>
+              <div class="settings-row-desc">Recebe uma notificação quando o Hermes concluir uma resposta longa.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="push-toggle">
+              <span class="switch-track"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- ---------- CONTROLE DE DADOS ---------- -->
+        <div class="settings-panel" id="panel-dados">
+          <h2>Controle de dados</h2>
+
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-title">Apagar todos os chats</div>
+              <div class="settings-row-desc">Remove permanentemente todo o histórico de conversas.</div>
+            </div>
+            <button class="danger-btn" data-action="delete-all-chats">Apagar</button>
+          </div>
+
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-title">Apagar chats fora de projetos</div>
+              <div class="settings-row-desc">Remove todos os chats, exceto os que estão vinculados a projetos.</div>
+            </div>
+            <button class="danger-btn" data-action="delete-non-project-chats">Apagar</button>
+          </div>
+
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-title">Apagar todos os projetos</div>
+              <div class="settings-row-desc">Remove permanentemente todos os projetos e seus conteúdos.</div>
+            </div>
+            <button class="danger-btn" data-action="delete-all-projects">Apagar</button>
+          </div>
+        </div>
+
+        <!-- ---------- ARMAZENAMENTO ---------- -->
+        <div class="settings-panel" id="panel-armazenamento">
+          <h2>Armazenamento</h2>
+
+          <div class="settings-group">
+            <label class="settings-label" for="memory-slider">Limite de memória (RAM) para o Hermes</label>
+            <div class="slider-row">
+              <input type="range" id="memory-slider" min="1" max="16" step="1" value="8">
+              <span id="memory-value">8 GB</span>
+            </div>
+            <div class="settings-row-desc">Limita quanta memória o núcleo local pode usar. Ajuste conforme o hardware da sua máquina.</div>
+          </div>
+        </div>
+
+        <!-- ---------- MANUAL ---------- -->
+        <div class="settings-panel" id="panel-manual">
+          <h2>Manual</h2>
+          <div class="settings-row-desc" style="max-width:520px;">
+            O Hermes é um assistente de IA local-first, focado em gestão de projetos, tarefas
+            e programação multi-linguagem. Use "Novo chat" para começar uma conversa,
+            "Projetos" para organizar contextos independentes e "Galeria" para ver seus arquivos gerados.
+            Comandos de voz e modo pesquisa podem ser ativados diretamente na barra de mensagens.
+          </div>
+        </div>
+
+      </section>
+    </div>
+  </div>
+
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="js/spheres.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/chat.js"></script>
+<script src="js/settings.js"></script>
 </body>
 </html>
