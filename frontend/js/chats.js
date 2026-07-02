@@ -13,6 +13,22 @@
   function showView(name) {
     document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
     document.getElementById('view-' + name).classList.add('active');
+    if (name === 'chat') {
+      // Atualizar título do chat
+      const projectId = window.HermesState.activeProjectId;
+      if (projectId) {
+        // Buscar nome do projeto
+        fetch(`${API()}/projects/`)
+          .then(res => res.json())
+          .then(projects => {
+            const proj = projects.find(p => p.id === projectId);
+            if (proj) document.getElementById('agent-title').textContent = proj.name;
+          })
+          .catch(() => {});
+      } else {
+        document.getElementById('agent-title').textContent = 'Hermes';
+      }
+    }
   }
 
   /* ---------- Carrega um chat na view-chat ---------- */

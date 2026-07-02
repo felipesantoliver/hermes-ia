@@ -373,6 +373,20 @@
       <div id="search-results"></div>
     </div>
   </div>
+
+</div> <!-- Fim da div #app -->
+
+<!-- ============ MODAL FLUTUANTE PARA NOVO PROJETO ============ -->
+<div id="new-project-modal" style="display:none; position:fixed; inset:0; z-index:70; background:rgba(0,0,0,0.4); align-items:center; justify-content:center;">
+  <div style="background:var(--bg-panel); border:1px solid var(--line); border-radius:16px; padding:24px; width:320px; max-width:90%; box-shadow:0 12px 40px rgba(0,0,0,0.6);">
+    <h3 style="margin:0 0 12px 0; font-family:var(--font-display); color:var(--text-hi);">Novo Projeto</h3>
+    <input type="text" id="new-project-name-modal" placeholder="Nome do projeto" style="width:100%; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg-elevated); color:var(--text-hi); font-size:14px; margin-bottom:10px;">
+    <textarea id="new-project-desc-modal" rows="2" placeholder="Descrição (opcional)" style="width:100%; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg-elevated); color:var(--text-hi); font-size:14px; resize:vertical; margin-bottom:12px;"></textarea>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button id="cancel-new-project-modal" class="ghost-btn" style="padding:8px 16px;">Cancelar</button>
+      <button id="confirm-new-project-modal" class="primary-btn" style="padding:8px 16px;">Criar</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>

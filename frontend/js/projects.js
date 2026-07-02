@@ -13,6 +13,8 @@
     refreshCurrentProjectChats: () => {
       if (currentProject) renderProjectChatsSection(currentProject.id);
     },
+    renderProjectsList: renderProjectsList,
+    openProject: openProject,
   };
 
   /* ---------- Navegação para a view de projetos ---------- */
@@ -28,22 +30,12 @@
         <h1>Projetos</h1>
         <button class="primary-btn" id="new-project-btn">+ Novo projeto</button>
       </div>
-      <div id="new-project-form" class="new-project-form hidden">
-        <input type="text" id="new-project-name" placeholder="Nome do projeto">
-        <textarea id="new-project-desc" rows="2" placeholder="Descrição (opcional)"></textarea>
-        <div class="new-project-actions">
-          <button class="ghost-btn" id="cancel-new-project">Cancelar</button>
-          <button class="primary-btn" id="confirm-new-project">Criar</button>
-        </div>
-      </div>
       <div id="projects-grid" class="projects-grid"></div>
     `;
 
-    const newBtn = document.getElementById('new-project-btn');
-    const form = document.getElementById('new-project-form');
-    newBtn.addEventListener('click', () => form.classList.toggle('hidden'));
-    document.getElementById('cancel-new-project').addEventListener('click', () => form.classList.add('hidden'));
-    document.getElementById('confirm-new-project').addEventListener('click', createProject);
+    document.getElementById('new-project-btn').addEventListener('click', () => {
+      document.getElementById('new-project-modal').style.display = 'flex';
+    });
 
     await loadProjectsGrid();
   }
@@ -89,11 +81,28 @@
     }
   }
 
-  async function createProject() {
-    const name = document.getElementById('new-project-name').value.trim();
-    const description = document.getElementById('new-project-desc').value.trim();
-    if (!name) return;
+  /* ---------- Modal de novo projeto ---------- */
+  const modal = document.getElementById('new-project-modal');
+  const cancelModal = document.getElementById('cancel-new-project-modal');
+  const confirmModal = document.getElementById('confirm-new-project-modal');
+  const nameInput = document.getElementById('new-project-name-modal');
+  const descInput = document.getElementById('new-project-desc-modal');
 
+  function closeModal() {
+    modal.style.display = 'none';
+    nameInput.value = '';
+    descInput.value = '';
+  }
+
+  cancelModal.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  confirmModal.addEventListener('click', async () => {
+    const name = nameInput.value.trim();
+    if (!name) return;
+    const description = descInput.value.trim();
     try {
       const res = await fetch(`${API()}/projects/`, {
         method: 'POST',
@@ -102,11 +111,12 @@
       });
       if (!res.ok) throw new Error('Falha ao criar projeto');
       const project = await res.json();
+      closeModal();
       openProject(project.id);
     } catch (err) {
       console.error('[Hermes] Erro ao criar projeto:', err);
     }
-  }
+  });
 
   /* ---------- Tela de detalhe do projeto ---------- */
   async function openProject(id) {
@@ -136,6 +146,12 @@
   function renderProjectConfigPanel(project) {
     const panel = document.getElementById('project-config-panel');
     panel.innerHTML = `
+      <div style="display:flex; gap:12px; align-items:center; margin-bottom:16px;">
+        <h1 style="flex:1; margin:0;">${escapeHtml(project.name)}</h1>
+        <button id="new-project-chat-btn" class="primary-btn" style="padding:8px 16px;">+ Novo chat</button>
+        <button id="exit-project-btn" class="ghost-btn" style="padding:8px 16px;">Sair do projeto</button>
+      </div>
+
       <div class="settings-group project-config-block">
         <label class="settings-label">Instruções</label>
         <textarea id="project-instructions" class="profile-textarea" rows="4"
@@ -175,7 +191,6 @@
 
       <div class="settings-group project-config-block">
         <label class="settings-label">Chats do projeto</label>
-        <button class="primary-btn" id="new-project-chat-btn">+ Novo chat neste projeto</button>
         <div id="project-chats-list" class="project-chats-list"></div>
       </div>
     `;
@@ -212,6 +227,10 @@
 
     // Chats do projeto
     document.getElementById('new-project-chat-btn').addEventListener('click', () => createProjectChat(project));
+    document.getElementById('exit-project-btn').addEventListener('click', () => {
+      window.HermesState.activeProjectId = null;
+      renderProjectsList();
+    });
     renderProjectChatsSection(project.id);
   }
 
@@ -332,6 +351,4 @@
     return div.innerHTML;
   }
 
-  window.HermesProjects.renderProjectsList = renderProjectsList;
-  window.HermesProjects.openProject = openProject;
 })();

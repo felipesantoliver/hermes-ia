@@ -12,6 +12,13 @@ document.getElementById('collapse-btn').addEventListener('click', () => {
 
 /* ---------- Novo chat (com chamada à API) ---------- */
 document.getElementById('new-chat-btn').addEventListener('click', async () => {
+  // Se estiver na view projetos, sair e ir para chat
+  const viewProjects = document.getElementById('view-projects');
+  if (viewProjects.classList.contains('active')) {
+    window.HermesState.activeProjectId = null;
+    window.HermesChats.showView('chat');
+  }
+
   try {
     const res = await fetch(HermesState.API_BASE + '/chats/', {
       method: 'POST',
