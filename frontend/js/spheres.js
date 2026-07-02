@@ -133,13 +133,55 @@
   // Velocidade da mini esfera: acelera enquanto o usuário digita no chat
   let miniSpeed = 0.004;
 
+  // ---------- Pulso reativo durante geração de resposta ----------
+  // A geometria da mini esfera é uma nuvem de pontos (THREE.Points), não uma
+  // malha sólida com material emissivo — por isso o "pulso" é aplicado via
+  // escala do objeto (miniPoints.scale) e, como aproximação de brilho, via
+  // opacidade do PointsMaterial (não há emissive em PointsMaterial).
+  const PULSE_SPEED = 1.1;       // "frequência" do pulso (osciladas por segundo, aprox.)
+  const PULSE_AMPLITUDE = 0.06;  // escala oscila entre 1 - 0.06 e 1 + 0.06 (0.94 a 1.06)
+  const BASE_OPACITY = 0.9;
+  const GLOW_AMPLITUDE = 0.08;
+
+  let isGenerating = false;
+  let currentScale = 1;
+  let pulseElapsed = 0;
+  let lastMiniFrameTime = performance.now();
+
+  function setGenerating(value) {
+    isGenerating = !!value;
+  }
+
   function animateMini() {
     requestAnimationFrame(animateMini);
     miniPoints.rotation.y += miniSpeed;
     miniPoints.rotation.x += miniSpeed * 0.3;
+
+    const now = performance.now();
+    const dt = Math.min((now - lastMiniFrameTime) / 1000, 0.1); // clamp p/ evitar saltos (aba em background etc.)
+    lastMiniFrameTime = now;
+
+    if (isGenerating) {
+      pulseElapsed += dt;
+      const wave = Math.sin(pulseElapsed * PULSE_SPEED * Math.PI * 2); // -1..1
+      const targetScale = 1 + wave * PULSE_AMPLITUDE;
+      // Segue o alvo do pulso suavemente (não é um salto abrupto entre frames)
+      currentScale += (targetScale - currentScale) * Math.min(1, dt * 14);
+      miniMaterial.opacity = BASE_OPACITY + wave * GLOW_AMPLITUDE;
+    } else {
+      // Ao voltar de isGenerating=true, interpola suavemente de volta a 1.0
+      // em vez de resetar abruptamente.
+      currentScale += (1 - currentScale) * Math.min(1, dt * 8);
+      miniMaterial.opacity += (BASE_OPACITY - miniMaterial.opacity) * Math.min(1, dt * 8);
+      pulseElapsed = 0;
+    }
+
+    miniPoints.scale.setScalar(currentScale);
     miniRenderer.render(miniScene, miniCamera);
   }
   animateMini();
+
+  window.HermesSphere = { setGenerating };
 
   const wrap = document.getElementById('mini-sphere-wrap');
   wrap.addEventListener('click', () => {

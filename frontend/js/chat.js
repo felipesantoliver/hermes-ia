@@ -81,6 +81,7 @@ function showTypingIndicator() {
  */
 async function sendMessageToBackend(userText, mode, projectId) {
   showTypingIndicator();
+  if (window.HermesSphere) window.HermesSphere.setGenerating(true);
 
   try {
     // 1. Garantir que existe um chat atual (criar se necessário)
@@ -131,7 +132,12 @@ async function sendMessageToBackend(userText, mode, projectId) {
     removeTypingIndicator();
     addMessage('hermes', hermesReply);
 
-    // 5. Salvar a resposta do Hermes no backend (opcional, pois o backend já salva, mas faremos por segurança)
+    // 5. Notificar (se o usuário tiver ativado notificações push)
+    if (window.HermesNotifications) {
+      window.HermesNotifications.notify('Hermes', 'Sua resposta está pronta.');
+    }
+
+    // 6. Salvar a resposta do Hermes no backend (opcional, pois o backend já salva, mas faremos por segurança)
     // O backend já salva, então não precisamos chamar novamente.
 
   } catch (error) {
@@ -139,6 +145,8 @@ async function sendMessageToBackend(userText, mode, projectId) {
     removeTypingIndicator();
     // Exibe erro como mensagem do Hermes (sem alert)
     addMessage('hermes', `❌ Ocorreu um erro: ${error.message || 'Falha na comunicação'}. Tente novamente.`);
+  } finally {
+    if (window.HermesSphere) window.HermesSphere.setGenerating(false);
   }
 }
 
