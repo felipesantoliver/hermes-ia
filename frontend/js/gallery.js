@@ -19,6 +19,21 @@
     renderGallery();
   });
 
+  /* ---------- Sair da galeria ao clicar em outro item da sidebar ----------
+     Usa fase de captura para rodar ANTES do listener próprio de cada item
+     (novo chat, buscar, projetos, configurações, um chat fixado/recente
+     etc.), garantindo que a troca de view aconteça independentemente da
+     ordem em que os outros scripts registraram seus handlers. Só age
+     quando a galeria está de fato aberta; o próprio botão da galeria é
+     ignorado para não causar um "pisca" desnecessário. */
+  const sidebarEl = document.getElementById('sidebar');
+  sidebarEl.addEventListener('click', (e) => {
+    if (!view.classList.contains('active')) return; // não está na galeria
+    const target = e.target.closest('.side-item, .chat-item, .pinned-item');
+    if (!target || target.id === 'gallery-nav-btn') return;
+    window.HermesChats.showView('chat');
+  }, true);
+
   /* ---------- Shell da view (renderizado uma vez, atualizado depois) ---------- */
   function renderShell() {
     view.innerHTML = `
