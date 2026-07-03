@@ -1,15 +1,17 @@
 # ===================== ROTAS DE CHAT =====================
 # Responsabilidade: receber mensagens do frontend, orquestrar o agente,
-# salvar mensagens e devolver a resposta.
+# salvar mensagens e devolver a resposta (via JSON ou via stream SSE).
 
+import json
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, AsyncIterator
 
 from .db import db_cursor, now_iso, new_id
 from .orchestrator.loop import AgentLoop
 from .orchestrator.router import select_agent
-from .orchestrator.analyst import should_use_analyst_mode  # NOVO IMPORT
+from .orchestrator.analyst import should_use_analyst_mode
 from .llm import LLMClient, get_llm_client
 from .profile_prompt import build_profile_system_section
 
@@ -18,7 +20,7 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    mode: Optional[str] = None          # "code" ou "think"
+    mode: Optional[str] = None          # "code", "think" ou "analyst"
     project_id: Optional[str] = None
     chat_id: str                        # obrigatório, pois já criamos antes
 
@@ -27,11 +29,12 @@ class ChatResponse(BaseModel):
     reply: str
 
 
-@router.post("/", response_model=ChatResponse)
-async def chat_endpoint(
-    payload: ChatRequest,
-    llm: LLMClient = Depends(get_llm_client),
-):
+async def _build_chat_context(payload: ChatRequest) -> dict:
+    """Valida o chat/projeto, monta o system prompt (perfil + projeto + modo)
+    e o histórico de mensagens. Usado tanto pela rota /chat/ quanto por
+    /chat/stream, para manter os dois fluxos idênticos exceto na entrega
+    da resposta.
+    """
     # 1. Validar que o chat existe
     with db_cursor() as cur:
         cur.execute("SELECT * FROM chats WHERE id = ?", (payload.chat_id,))
@@ -86,7 +89,7 @@ async def chat_endpoint(
     # não estiver ativo mas o perfil pedir alto rigor (personalidade "técnico"
     # ou filtro de conteúdo >= 3), o orquestrador sobe para modo analista
     # internamente. O chip da UI não é alterado — isso é invisível ao usuário.
-    effective_mode = payload.mode  # NOVO BLOCO
+    effective_mode = payload.mode
     if should_use_analyst_mode(payload.mode, profile_dict):
         effective_mode = "analyst"
 
@@ -106,26 +109,106 @@ async def chat_endpoint(
     # Adicionar a mensagem atual do usuário (já foi salva, mas vamos adicionar para garantir)
     messages.append({"role": "user", "content": payload.message})
 
-    # 8. Chamar o agente (orquestrador) usando o router para selecionar o agente adequado
+    # 8. Selecionar o agente adequado (classificador híbrido: embeddings + heurística)
     agent_type = select_agent(payload.mode, payload.message)
-    # Criar o loop e executar
-    loop = AgentLoop(llm_client=llm)
-    result = await loop.run(
-        messages=messages,
-        project_id=payload.project_id,
-        chat_id=payload.chat_id,
-        mode=effective_mode,  # ALTERADO: usa effective_mode em vez de payload.mode
-        agent_type=agent_type,  # opcional, se o loop precisar
-    )
 
-    # 9. Salvar a resposta do Hermes no banco
+    return {
+        "messages": messages,
+        "effective_mode": effective_mode,
+        "agent_type": agent_type,
+        "project_id": payload.project_id,
+    }
+
+
+def _save_hermes_reply(chat_id: str, reply: str) -> None:
     with db_cursor() as cur:
         mid = new_id()
         ts = now_iso()
         cur.execute(
             "INSERT INTO messages (id, chat_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
-            (mid, payload.chat_id, "hermes", result, ts)
+            (mid, chat_id, "hermes", reply, ts)
         )
-        cur.execute("UPDATE chats SET updated_at = ? WHERE id = ?", (ts, payload.chat_id))
+        cur.execute("UPDATE chats SET updated_at = ? WHERE id = ?", (ts, chat_id))
+
+
+@router.post("/", response_model=ChatResponse)
+async def chat_endpoint(
+    payload: ChatRequest,
+    llm: LLMClient = Depends(get_llm_client),
+):
+    ctx = await _build_chat_context(payload)
+
+    loop = AgentLoop(llm_client=llm)
+    result = await loop.run(
+        messages=ctx["messages"],
+        project_id=ctx["project_id"],
+        chat_id=payload.chat_id,
+        mode=ctx["effective_mode"],
+        agent_type=ctx["agent_type"],
+    )
+
+    _save_hermes_reply(payload.chat_id, result)
 
     return ChatResponse(reply=result)
+
+
+async def _sse_event_stream(payload: ChatRequest, llm: LLMClient) -> AsyncIterator[str]:
+    """Gera os eventos SSE (text/event-stream) para a rota /chat/stream.
+
+    Eventos emitidos:
+      event: token  data: {"token": "..."}       -> um fragmento de texto
+      event: error  data: {"error": "..."}        -> erro durante a geração
+      event: done   data: {}                       -> fim do stream (sucesso)
+    """
+    try:
+        ctx = await _build_chat_context(payload)
+    except HTTPException as e:
+        err_payload = json.dumps({"error": e.detail}, ensure_ascii=False)
+        yield f"event: error\ndata: {err_payload}\n\n"
+        return
+
+    loop = AgentLoop(llm_client=llm)
+    full_response = ""
+
+    try:
+        async for token in loop.run_stream(
+            messages=ctx["messages"],
+            project_id=ctx["project_id"],
+            chat_id=payload.chat_id,
+            mode=ctx["effective_mode"],
+            agent_type=ctx["agent_type"],
+        ):
+            full_response += token
+            token_payload = json.dumps({"token": token}, ensure_ascii=False)
+            yield f"event: token\ndata: {token_payload}\n\n"
+    except Exception as e:
+        err_payload = json.dumps({"error": str(e)}, ensure_ascii=False)
+        yield f"event: error\ndata: {err_payload}\n\n"
+        return
+
+    # Salva a resposta completa no banco, igual ao fluxo não-stream
+    if full_response:
+        _save_hermes_reply(payload.chat_id, full_response)
+
+    yield "event: done\ndata: {}\n\n"
+
+
+@router.post("/stream")
+async def chat_stream_endpoint(
+    payload: ChatRequest,
+    llm: LLMClient = Depends(get_llm_client),
+):
+    """Mesmo ChatRequest da rota /chat/, mas devolve a resposta como um
+    stream SSE (text/event-stream), token a token, conforme o LLM gera.
+    No modo analista o streaming interno é desabilitado (a resposta só
+    fica pronta após todas as iterações), mas o endpoint continua
+    funcionando: a resposta final é enviada como um único evento "token".
+    """
+    return StreamingResponse(
+        _sse_event_stream(payload, llm),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # evita buffering em proxies tipo nginx
+        },
+    )

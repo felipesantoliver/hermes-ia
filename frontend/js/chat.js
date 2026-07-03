@@ -105,7 +105,125 @@ function showAnalystIndicator() {
 }
 
 /**
+ * Cria (se ainda não existir) a bolha de mensagem do Hermes usada para
+ * preencher incrementalmente durante o streaming, e devolve o elemento
+ * <div class="bubble"> para atualização de texto.
+ */
+function createHermesBubble() {
+  removeTypingIndicator();
+  const emptyState = document.getElementById('empty-state');
+  if (emptyState) emptyState.remove();
+
+  const msg = document.createElement('div');
+  msg.className = 'msg hermes';
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar hermes';
+
+  const bubbleWrap = document.createElement('div');
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta';
+  meta.textContent = 'Hermes';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubbleWrap.appendChild(meta);
+  bubbleWrap.appendChild(bubble);
+
+  msg.appendChild(avatar);
+  msg.appendChild(bubbleWrap);
+  msgCol.appendChild(msg);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  return bubble;
+}
+
+/**
+ * Conecta em POST /chat/stream e vai preenchendo a bolha do Hermes
+ * incrementalmente, token a token, conforme os eventos SSE chegam.
+ *
+ * Retorna o texto final completo em caso de sucesso, ou `null` se a
+ * conexão falhou ANTES de qualquer token ser recebido (nesse caso o
+ * chamador pode tentar o endpoint tradicional /chat/ como fallback, sem
+ * duplicar mensagens na tela).
+ */
+async function runStreamingChat(chatPayload) {
+  let hermesBubble = null;
+  let hermesText = '';
+
+  let streamRes;
+  try {
+    streamRes = await fetch(`${window.HermesState.API_BASE}/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(chatPayload),
+    });
+  } catch (networkErr) {
+    // Falha de rede antes de qualquer token: permite fallback silencioso
+    return null;
+  }
+
+  if (!streamRes.ok || !streamRes.body) {
+    return null; // permite fallback para o endpoint tradicional
+  }
+
+  const reader = streamRes.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let sseBuffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    sseBuffer += decoder.decode(value, { stream: true });
+
+    // Eventos SSE são separados por uma linha em branco ("\n\n")
+    let sepIndex;
+    while ((sepIndex = sseBuffer.indexOf('\n\n')) !== -1) {
+      const rawEvent = sseBuffer.slice(0, sepIndex);
+      sseBuffer = sseBuffer.slice(sepIndex + 2);
+
+      let eventType = 'message';
+      let dataStr = '';
+      for (const line of rawEvent.split('\n')) {
+        if (line.startsWith('event:')) eventType = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
+      }
+      if (!dataStr) continue;
+
+      let data;
+      try {
+        data = JSON.parse(dataStr);
+      } catch (e) {
+        continue;
+      }
+
+      if (eventType === 'token' && typeof data.token === 'string') {
+        if (!hermesBubble) hermesBubble = createHermesBubble();
+        hermesText += data.token;
+        hermesBubble.textContent = hermesText;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      } else if (eventType === 'error') {
+        if (!hermesBubble) hermesBubble = createHermesBubble();
+        hermesText += `\n❌ ${data.error || 'Falha na comunicação'}`;
+        hermesBubble.textContent = hermesText;
+      }
+      // evento "done" apenas sinaliza o fim do stream; nada a fazer aqui
+    }
+  }
+
+  if (!hermesBubble) {
+    // Stream terminou sem produzir nenhum token: permite fallback
+    return null;
+  }
+
+  return hermesText;
+}
+
+/**
  * Envia a mensagem para o backend e processa a resposta.
+ * Tenta primeiro o streaming em tempo real (POST /chat/stream); se o
+ * navegador não suportar ReadableStream, ou a conexão falhar antes de
+ * qualquer token chegar, cai automaticamente para o endpoint tradicional
+ * (POST /chat/), que continua funcionando como antes.
  */
 async function sendMessageToBackend(userText, mode, projectId) {
   if (mode === 'analyst') {
@@ -114,6 +232,8 @@ async function sendMessageToBackend(userText, mode, projectId) {
     showTypingIndicator();
   }
   if (window.HermesSphere) window.HermesSphere.setGenerating(true);
+
+  const supportsStreaming = typeof ReadableStream !== 'undefined' && !!window.fetch;
 
   try {
     // 1. Garantir que existe um chat atual (criar se necessário)
@@ -148,29 +268,42 @@ async function sendMessageToBackend(userText, mode, projectId) {
       project_id: projectId || null,
       chat_id: chatId,
     };
-    const chatRes = await fetch(`${window.HermesState.API_BASE}/chat/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(chatPayload),
-    });
-    if (!chatRes.ok) {
-      const errData = await chatRes.json().catch(() => ({}));
-      throw new Error(errData.detail || 'Erro ao processar mensagem');
-    }
-    const data = await chatRes.json();
-    const hermesReply = data.reply;
 
-    // 4. Remover indicador e adicionar resposta do Hermes
+    let hermesReply = null;
+
+    // 3a. Tenta streaming primeiro
+    if (supportsStreaming) {
+      hermesReply = await runStreamingChat(chatPayload);
+    }
+
+    // 3b. Fallback: endpoint tradicional (sem streaming), se o stream não
+    // produziu nenhum token (navegador sem suporte, erro de conexão, etc.)
+    if (hermesReply === null) {
+      const chatRes = await fetch(`${window.HermesState.API_BASE}/chat/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(chatPayload),
+      });
+      if (!chatRes.ok) {
+        const errData = await chatRes.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Erro ao processar mensagem');
+      }
+      const data = await chatRes.json();
+      hermesReply = data.reply;
+      removeTypingIndicator();
+      addMessage('hermes', hermesReply);
+    }
+
+    // 4. Remover indicador de digitação (caso ainda esteja visível)
     removeTypingIndicator();
-    addMessage('hermes', hermesReply);
 
     // 5. Notificar (se o usuário tiver ativado notificações push)
     if (window.HermesNotifications) {
       window.HermesNotifications.notify('Hermes', 'Sua resposta está pronta.');
     }
 
-    // 6. Salvar a resposta do Hermes no backend (opcional, pois o backend já salva, mas faremos por segurança)
-    // O backend já salva, então não precisamos chamar novamente.
+    // 6. A resposta do Hermes já foi salva pelo backend (tanto na rota
+    // tradicional quanto na rota de streaming), não precisamos salvar de novo.
 
   } catch (error) {
     console.error('[Hermes] Erro no envio:', error);

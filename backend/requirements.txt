@@ -4,3 +4,5 @@ pydantic
 httpx
 python-multipart
 pytest
+sentence-transformers
+numpy
