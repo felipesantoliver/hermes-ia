@@ -1,0 +1,18 @@
+{
+  "domain": "security",
+  "label": "Segurança",
+  "applies_when": [
+    "senha", "auth", "autentic", "autoriz", "criptograf", "hash",
+    "token", "jwt", "sql", "injection", "injeção", "xss", "csrf",
+    "segurança", "vulnerab", "permiss", "sanitiz", "upload", "shell",
+    "subprocess", "exec(", "eval(", "path traversal", "secret", "chave api"
+  ],
+  "items": [
+    "Entradas externas (usuário, arquivo, rede) são validadas/sanitizadas antes de uso?",
+    "Nenhuma senha, token ou segredo é logado ou exposto em texto claro?",
+    "Comandos de shell ou SQL são construídos sem concatenação direta de input do usuário?",
+    "Falhas de autenticação/autorização resultam em negar acesso por padrão (fail-closed)?",
+    "Dados sensíveis em repouso ou em trânsito têm proteção adequada (hash/criptografia/HTTPS)?",
+    "Erros não vazam detalhes internos (stack trace, paths, versões) para o usuário final?"
+  ]
+}

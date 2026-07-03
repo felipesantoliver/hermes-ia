@@ -357,7 +357,7 @@ Na V1, o usuário pode ativar a exibição do raciocínio interno do Hermes dire
 - [x] integração com ambiente local
 - [x] SQLite + schemas (projetos, chats, mensagens, perfil, arquivos)
 - [x] Navegação SPA (chat, projetos, sidebar, busca)
-- [x] Chat funcional (LLM real, anexos, tools, agent loop)
+- [ ] Chat funcional (LLM real, anexos, tools, agent loop)
 - [x] Memória em 3 camadas + Galeria de arquivos
 - [x] Perfil completo com persistência e aplicação no LLM
 - [x] Configurações (ações destrutivas, notificações, RAM, esfera reativa)

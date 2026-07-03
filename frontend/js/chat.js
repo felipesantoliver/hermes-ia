@@ -76,11 +76,43 @@ function showTypingIndicator() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+/** Mostra "Hermes está analisando profundamente..." com barra indeterminada,
+ * usado quando o modo analista está ativo. Reaproveita o mesmo slot do
+ * indicador de digitação (typingIndicator), pois é removido do mesmo jeito. */
+function showAnalystIndicator() {
+  removeTypingIndicator();
+  const msg = document.createElement('div');
+  msg.className = 'msg hermes';
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar hermes';
+  const bubbleWrap = document.createElement('div');
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta';
+  meta.textContent = 'Hermes';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble analyst-indicator';
+  bubble.innerHTML = `
+    <div class="analyst-indicator-label">🔬 Hermes está analisando profundamente…</div>
+    <div class="analyst-progress-track"><div class="analyst-progress-bar"></div></div>
+  `;
+  bubbleWrap.appendChild(meta);
+  bubbleWrap.appendChild(bubble);
+  msg.appendChild(avatar);
+  msg.appendChild(bubbleWrap);
+  msgCol.appendChild(msg);
+  typingIndicator = msg;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
 /**
  * Envia a mensagem para o backend e processa a resposta.
  */
 async function sendMessageToBackend(userText, mode, projectId) {
-  showTypingIndicator();
+  if (mode === 'analyst') {
+    showAnalystIndicator();
+  } else {
+    showTypingIndicator();
+  }
   if (window.HermesSphere) window.HermesSphere.setGenerating(true);
 
   try {
@@ -158,8 +190,10 @@ function sendMessage() {
   let mode = null;
   const codeChip = document.getElementById('mode-code');
   const thinkChip = document.getElementById('mode-think');
+  const analystChip = document.getElementById('mode-analyst');
   if (codeChip.classList.contains('active')) mode = 'code';
   else if (thinkChip.classList.contains('active')) mode = 'think';
+  else if (analystChip.classList.contains('active')) mode = 'analyst';
 
   const projectId = window.HermesState.activeProjectId || null;
 
@@ -315,3 +349,6 @@ const micBtn = document.querySelector('.input-icon-btn[title="Microfone"]');
 micBtn.addEventListener('click', () => {
   alert('Ditado por voz ainda não disponível');
 });
+
+// Expor sendMessage globalmente para uso em outros módulos (ex: projetos)
+window.sendMessage = sendMessage;

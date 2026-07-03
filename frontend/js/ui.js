@@ -63,8 +63,16 @@ input.addEventListener('input', () => {
   input.style.height = Math.min(input.scrollHeight, 160) + 'px';
 });
 
-['mode-code', 'mode-think'].forEach((id) => {
+/* ---------- Chips de modo: apenas um ativo por vez (code / think / analyst) ---------- */
+const MODE_CHIP_IDS = ['mode-code', 'mode-think', 'mode-analyst'];
+MODE_CHIP_IDS.forEach((id) => {
   document.getElementById(id).addEventListener('click', function () {
-    this.classList.toggle('active');
+    const wasActive = this.classList.contains('active');
+    MODE_CHIP_IDS.forEach((otherId) => {
+      document.getElementById(otherId).classList.remove('active');
+    });
+    if (!wasActive) {
+      this.classList.add('active');
+    }
   });
 });

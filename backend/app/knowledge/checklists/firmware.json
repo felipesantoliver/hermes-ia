@@ -1,0 +1,17 @@
+{
+  "domain": "firmware",
+  "label": "Firmware / Embarcado",
+  "applies_when": [
+    "firmware", "microcontrolador", "esp32", "arduino", "stm32",
+    "embarcado", "gpio", "interrupção", "isr", "uart", "i2c", "spi",
+    "watchdog", "bootloader", "registrador", "baixo nível", "driver"
+  ],
+  "items": [
+    "Recursos limitados (RAM/flash/CPU) do alvo embarcado foram considerados?",
+    "Rotinas de interrupção (ISR) são curtas e não fazem alocação dinâmica ou I/O bloqueante?",
+    "Há proteção contra estados inválidos de hardware (timeout, watchdog, fallback seguro)?",
+    "Acesso a registradores/periféricos está correto para o chip alvo especificado?",
+    "Concorrência entre ISR e loop principal é tratada (variáveis voláteis, seções críticas)?",
+    "Comportamento em falha de energia ou reset é definido e seguro?"
+  ]
+}

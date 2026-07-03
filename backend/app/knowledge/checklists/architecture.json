@@ -1,0 +1,18 @@
+{
+  "domain": "architecture",
+  "label": "Arquitetura",
+  "applies_when": [
+    "arquitetura", "design", "estrutura", "escalabilidade", "módulo",
+    "acoplamento", "camada", "api", "endpoint", "banco de dados",
+    "schema", "migração", "microserviço", "padrão de projeto",
+    "refatorar", "organizar", "dependência"
+  ],
+  "items": [
+    "As responsabilidades entre módulos/camadas estão claramente separadas?",
+    "A solução respeita as restrições de hardware do projeto (Ryzen 5 5500, RX 580 8GB, 16GB RAM)?",
+    "A solução funciona de ponta a ponta apenas com o modelo padrão, sem depender do modo engenheiro opcional?",
+    "Não há acoplamento desnecessário entre componentes que deveriam ser independentes?",
+    "Erros e casos de borda têm um caminho de tratamento definido (não apenas o caminho feliz)?",
+    "A solução é consistente com os padrões já estabelecidos no repositório (nomenclatura, camadas, convenções)?"
+  ]
+}

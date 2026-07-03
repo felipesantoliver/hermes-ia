@@ -9,13 +9,15 @@ from ..tools.base import ToolResult
 from ..config import settings
 from ..db import DATA_DIR
 from ..memory.context_builder import build_memory_context
+from .analyst import AnalystOrchestrator
 
 logger = logging.getLogger(__name__)
 
 class AgentLoop:
-    def __init__(self, llm_client: LLMClient, max_iterations: int = 6):
+    def __init__(self, llm_client: LLMClient, max_iterations: int = 6, analyst_max_iterations: int = 12):
         self.llm = llm_client
         self.max_iterations = max_iterations
+        self.analyst_max_iterations = analyst_max_iterations
 
     async def run(
         self,
@@ -42,12 +44,19 @@ class AgentLoop:
         # Clonar mensagens para não modificar a original
         conv = messages.copy()
 
-        # Inserir/atualizar system prompt com informações sobre tools
+        # Inserir/atualizar system prompt com informações sobre tools.
+        # Pulamos isso em modo analista: o AnalystOrchestrator usa seu próprio
+        # protocolo (analyst_system.txt + blocos de código para verificação),
+        # e misturar as duas instruções JSON confunde o modelo local.
         sys_msg = next((m for m in conv if m["role"] == "system"), None)
-        if sys_msg:
-            sys_msg["content"] += "\n\nVocê tem acesso às seguintes ferramentas. Se precisar executar uma ação, responda com um JSON contendo o nome da tool e seus parâmetros. Caso contrário, responda normalmente."
-        else:
-            sys_msg = {"role": "system", "content": "Você tem acesso a ferramentas. Responda com JSON para usá-las ou texto normal para responder."}
+        if mode != "analyst":
+            if sys_msg:
+                sys_msg["content"] += "\n\nVocê tem acesso às seguintes ferramentas. Se precisar executar uma ação, responda com um JSON contendo o nome da tool e seus parâmetros. Caso contrário, responda normalmente."
+            else:
+                sys_msg = {"role": "system", "content": "Você tem acesso a ferramentas. Responda com JSON para usá-las ou texto normal para responder."}
+                conv.insert(0, sys_msg)
+        elif not sys_msg:
+            sys_msg = {"role": "system", "content": ""}
             conv.insert(0, sys_msg)
 
         # Injetar memória (arquitetural > conversacional > código), respeitando
@@ -60,6 +69,12 @@ class AgentLoop:
         if memory_block:
             sys_msg["content"] += "\n\n" + memory_block
 
+        # Modo Analista: processo rigoroso de decomposição, múltiplos
+        # candidatos, juiz, verificação por tools e checklists de domínio.
+        # Troca latência por qualidade, sem depender de um modelo maior.
+        if mode == "analyst":
+            analyst = AnalystOrchestrator(llm_client=self.llm, max_iterations=self.analyst_max_iterations)
+            return analyst.run(messages=conv, project_id=project_id, chat_id=chat_id)
 
         # Loop principal
         iteration = 0

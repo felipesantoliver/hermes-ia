@@ -9,6 +9,7 @@ from typing import Optional
 from .db import db_cursor, now_iso, new_id
 from .orchestrator.loop import AgentLoop
 from .orchestrator.router import select_agent
+from .orchestrator.analyst import should_use_analyst_mode  # NOVO IMPORT
 from .llm import LLMClient, get_llm_client
 from .profile_prompt import build_profile_system_section
 
@@ -81,6 +82,14 @@ async def chat_endpoint(
     elif payload.mode == "think":
         system_prompt += "\n\nModo pensador: explore o problema com raciocínio detalhado, considere alternativas e discuta implicações."
 
+    # 5b. Heurística de escalonamento para o Modo Analista: se o chip "analyst"
+    # não estiver ativo mas o perfil pedir alto rigor (personalidade "técnico"
+    # ou filtro de conteúdo >= 3), o orquestrador sobe para modo analista
+    # internamente. O chip da UI não é alterado — isso é invisível ao usuário.
+    effective_mode = payload.mode  # NOVO BLOCO
+    if should_use_analyst_mode(payload.mode, profile_dict):
+        effective_mode = "analyst"
+
     # 6. Buscar histórico de mensagens (até as últimas 10 para contexto)
     with db_cursor() as cur:
         cur.execute(
@@ -105,7 +114,7 @@ async def chat_endpoint(
         messages=messages,
         project_id=payload.project_id,
         chat_id=payload.chat_id,
-        mode=payload.mode,
+        mode=effective_mode,  # ALTERADO: usa effective_mode em vez de payload.mode
         agent_type=agent_type,  # opcional, se o loop precisar
     )
 
