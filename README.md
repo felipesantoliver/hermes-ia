@@ -1,12 +1,5 @@
 # 🧠 Hermes AI
 
-[![Versão](https://img.shields.io/badge/versão-v0.2.0--dev-blue)](https://github.com/felipesantoliver/hermes-ai)
-[![MVP](https://img.shields.io/badge/MVP-concluído-brightgreen)]()
-[![V1](https://img.shields.io/badge/V1-concluída-brightgreen)]()
-[![V2](https://img.shields.io/badge/V2-em%20desenvolvimento-yellow)]()
-[![Licença](https://img.shields.io/badge/licença-MIT-green)](./LICENSE)
-[![Hardware](https://img.shields.io/badge/hardware-AMD%20Ryzen%205%205500%20%7C%20RX%20580%208GB%20%7C%2016GB%20RAM-informational)]()
-
 **Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
 O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
