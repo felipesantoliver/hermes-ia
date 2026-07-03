@@ -5,8 +5,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from contextlib import contextmanager
 
+# Em modo dev, BASE_DIR = backend/ (ao lado deste arquivo).
+# Em modo empacotado (.exe via PyInstaller), backend/app/db.py roda de dentro
+# da pasta temporária de extração (sys._MEIPASS), que é apagada ao fechar o
+# app — gravar o banco lá destruiria os dados a cada reinício. Por isso o
+# launcher raiz (main.py, fora do pacote) exporta HERMES_DATA_DIR apontando
+# para uma pasta "data/" ao lado do Hermes-ia.exe antes de importar o app.
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
-DATA_DIR = BASE_DIR / "data"
+_env_data_dir = os.environ.get("HERMES_DATA_DIR")
+DATA_DIR = Path(_env_data_dir).resolve() if _env_data_dir else (BASE_DIR / "data")
 DB_PATH = DATA_DIR / "hermes.db"
 PROJECTS_FILES_DIR = DATA_DIR / "projects"
 LOOSE_FILES_DIR = DATA_DIR / "loose"

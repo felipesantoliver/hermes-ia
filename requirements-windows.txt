@@ -1,0 +1,13 @@
+# ===================== DEPENDÊNCIAS DE BUILD (WINDOWS) =====================
+# NOVO (não estava no requirements.txt do backend): estas 3 libs só são
+# necessárias para gerar/rodar o Hermes-ia.exe — não são necessárias para
+# rodar o backend puro em dev. Mantidas separadas de propósito.
+#
+# pywebview   -> janela nativa com Edge WebView2 (frontend/js/spheres.js e
+#                todo o resto do frontend não mudam nada; é só o "porta-retrato")
+# pyinstaller -> empacota tudo (backend + frontend + launcher) em Hermes-ia.exe
+# pillow      -> usado só por make_icon.py para gerar o icon.ico
+
+pywebview>=4.4
+pyinstaller>=6.0
+pillow>=10.0

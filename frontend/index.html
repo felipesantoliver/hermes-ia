@@ -345,11 +345,92 @@
         <!-- ---------- MANUAL ---------- -->
         <div class="settings-panel" id="panel-manual">
           <h2>Manual</h2>
-          <div class="settings-row-desc" style="max-width:520px;">
-            O Hermes é um assistente de IA local-first, focado em gestão de projetos, tarefas
-            e programação multi-linguagem. Use "Novo chat" para começar uma conversa,
-            "Projetos" para organizar contextos independentes e "Galeria" para ver seus arquivos gerados.
-            Comandos de voz e modo pesquisa podem ser ativados diretamente na barra de mensagens.
+
+          <div class="settings-group">
+            <h3>Visão geral</h3>
+            <div class="settings-row-desc" style="max-width:560px;">
+              O Hermes é um assistente de IA local-first: o modelo roda na sua máquina, sem
+              depender de nuvem. Ele nunca executa nada sozinho — interpreta seu pedido, planeja
+              e decide quais ferramentas usar (sandbox Python, shell, análise estática, indexação
+              de código, busca web), mas quem executa de fato são as ferramentas, de forma
+              determinística e auditável.
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>Navegação</h3>
+            <div class="settings-row-desc" style="max-width:560px;">
+              <strong>Novo chat</strong> começa uma conversa nova. <strong>Projetos</strong>
+              agrupa chats e arquivos em um contexto isolado (instruções e memória próprios).
+              <strong>Buscar conversa</strong> filtra o histórico por título/conteúdo.
+              <strong>Galeria</strong> reúne os arquivos gerados ou anexados nas conversas.
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>Chips de modo</h3>
+            <div class="settings-row-desc" style="max-width:560px;">
+              <strong>Code</strong> — respostas objetivas, focadas em código e solução técnica.<br>
+              <strong>Think</strong> — raciocínio explorado com mais profundidade antes de responder.<br>
+              <strong>Engineer</strong> — usa o modelo local maior (se configurado) para tarefas que
+              pedem mais capacidade; sem ele configurado, cai automaticamente no modelo padrão.<br>
+              <strong>Analyst</strong> — modo de auditoria/checklist, também acionado
+              automaticamente quando seu perfil pede alto rigor técnico.
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>Pensamento visível</h3>
+            <div class="settings-row-desc" style="max-width:560px;">
+              Quando ativado, o Hermes transmite o raciocínio interno em tempo real, separado da
+              resposta final — útil para acompanhar decisões durante tarefas mais longas. Ative em
+              Configurações → Geral.
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>Modo engenheiro (opcional)</h3>
+            <div class="settings-row-desc" style="max-width:560px;">
+              Um segundo modelo local, maior, 100% opcional — o Hermes funciona de ponta a ponta
+              sem ele. Só ative se tiver VRAM/RAM extra disponível: baixe o modelo em
+              Configurações → Armazenamento e aponte o caminho/URL do servidor.
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>Filtro de conteúdo e personalidade</h3>
+            <div class="settings-row-desc" style="max-width:560px;">
+              Em Perfil, você ajusta personalidade, acolhimento, entusiasmo, emojis e o nível de
+              filtro de conteúdo (1 a 4, do mais direto/informal ao mais formal/cauteloso) — isso
+              controla apenas <em>tom e disposição para temas maduros entre adultos</em>. Um piso
+              de segurança fixo sobre risco real à vida ou integridade física de pessoas se aplica
+              em todos os níveis e não pode ser desativado.
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>Anexos e microfone</h3>
+            <div class="settings-row-desc" style="max-width:560px;">
+              O clipe na barra de mensagens anexa arquivos reais ao chat (enviados ao backend). O
+              ícone de microfone está reservado para uma versão futura com entrada por voz.
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>Atalhos de teclado</h3>
+            <div class="settings-row-desc" style="max-width:560px;">
+              <strong>Enter</strong> envia a mensagem. <strong>Shift + Enter</strong> quebra linha
+              sem enviar.
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>Recursos do sistema</h3>
+            <div class="settings-row-desc" style="max-width:560px;">
+              O slider de RAM em Configurações → Armazenamento define o teto de uso que o Hermes
+              respeita ao decidir quanto contexto carregar. O monitor interno avisa quando o uso
+              real de RAM/CPU se aproxima desse limite.
+            </div>
           </div>
         </div>
 

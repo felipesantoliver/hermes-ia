@@ -285,117 +285,164 @@ text
 
 ---
 
-## Como Executar Localmente
+## Como Executar
 
-### Pré-requisitos
-- **Python 3.10+** com pip
-- **Servidor llama.cpp** rodando localmente (ou compatível com API OpenAI)
-- **Node.js** (opcional, para desenvolvimento do frontend – a SPA é estática)
-- **SearXNG** (opcional, para busca web)
-- **PlatformIO** (opcional, para compilação de firmware)
-- **Bandit / ShellCheck** (opcionais, para análise estática)
-- **llama-cpp-python** (opcional, para carregamento embarcado do modelo engenheiro)
-- **Gradle** (opcional, para builds Android)
+O Hermes tem dois jeitos de rodar: **como app Windows** (`Hermes-ia.exe`, recomendado para
+uso do dia a dia) ou **em modo dev** (backend + frontend soltos, para quem vai mexer no código).
 
-### Passos
+### Opção A — Usar o Hermes-ia.exe (Windows 10/11)
 
-1. **Clone o repositório**
+Se você já tem uma pasta de distribuição (`Hermes-ia.exe`, `models/`, etc.):
+
+1. Coloque o modelo `.gguf` em `models/hermes-core.gguf` (baixe um Qwen 7B–8B quantizado, ex.:
+   `Qwen2.5-7B-Instruct-Q4_K_M.gguf`).
+2. Dê duplo clique em `Hermes-ia.exe`.
+3. A splash screen aparece enquanto o backend sobe (mínimo de 3s, timeout de 15s); quando tudo
+   estiver pronto, a janela principal abre sozinha — sem terminal, sem navegador.
+4. Para fechar, feche a janela normalmente: o backend e o `llama-server` (se o Hermes o iniciou)
+   são encerrados junto.
+
+**Atalhos (opcional):** rode `install.ps1` (botão direito → "Executar com PowerShell") para copiar
+o app para `C:\Program Files\Hermes-ia\` e criar atalhos na Área de Trabalho e no Menu Iniciar. Ou,
+mais simples: botão direito no `.exe` → "Criar atalho" e mova para onde quiser.
+
+### Opção B — Buildar o .exe você mesmo
+
+Pré-requisitos: **Windows 10/11**, **Python 3.10+**.
+
+```bash
+git clone https://github.com/felipesantoliver/hermes-ai.git
+cd hermes-ai
+pip install -r backend/requirements.txt
+python build.py
+```
+
+`build.py` instala `pywebview`/`pyinstaller`/`pillow` (via `requirements-windows.txt`), gera
+`icon.ico` automaticamente se não existir (`make_icon.py`), roda o PyInstaller com `--onefile
+--windowed` e deixa o executável em `dist/Hermes-ia.exe`. Depois:
+
+1. Copie `models/` (com o `.gguf`) para dentro de `dist/`.
+2. Rode `dist/Hermes-ia.exe` e confirme que abre sem terminal.
+3. Distribua a pasta `dist/` inteira (ou rode `install.ps1` de dentro dela).
+
+**Estrutura final de distribuição:**
+```
+Hermes-ia/
+├── Hermes-ia.exe        (backend + frontend embutidos)
+├── models/
+│   └── hermes-core.gguf
+├── data/                (criado automaticamente no 1º uso)
+│   ├── hermes.db
+│   ├── projects/
+│   ├── loose/
+│   └── logs/
+└── README.md
+```
+`models/` fica fora do `.exe` de propósito — assim dá para trocar de modelo sem rebuildar.
+
+### Opção C — Modo dev (backend + frontend soltos, qualquer SO)
+
+1. **Configure o backend**
    ```bash
-   git clone https://github.com/felipesantoliver/hermes-ai.git
-   cd hermes-ai
-Configure o backend
+   cd backend
+   python -m venv venv
+   source venv/bin/activate   # Linux/Mac
+   # .\venv\Scripts\activate no Windows
+   pip install -r requirements.txt
+   ```
+2. **Configure o LLM** — baixe um Qwen 7B/8B quantizado, coloque em
+   `backend/models/hermes-core.gguf` (ou ajuste `MODEL_PATH` em `config.py`), e suba o servidor:
+   ```bash
+   llama-server -m models/hermes-core.gguf --host 0.0.0.0 --port 8080
+   ```
+3. **Inicie o backend** (agora já serve o frontend embutido em `/`, não precisa de servidor
+   HTTP separado para os arquivos estáticos):
+   ```bash
+   uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+   ```
+4. Acesse `http://localhost:8000` no navegador.
 
-bash
-cd backend
-python -m venv venv
-source venv/bin/activate   # Linux/Mac
-# .\venv\Scripts\activate no Windows
-pip install -r requirements.txt
-Configure o LLM
+### Configuração do Modo Engenheiro (opcional)
 
-Baixe um modelo Qwen 7B/8B quantizado (ex: Qwen2.5-7B-Instruct-Q4_K_M.gguf)
+1. Baixe um modelo maior (ex.: Qwen 14B ou 32B) e coloque em `models/engineer/` (ou outro
+   diretório de sua escolha).
+2. No app, acesse **Configurações → Armazenamento**.
+3. Preencha o caminho do arquivo `.gguf` ou a URL do servidor `llama.cpp` dedicado.
+4. Clique em "Testar conexão" para verificar.
+5. Ative o chip "Engineer" na barra de mensagens para usar o modelo maior.
 
-Coloque em backend/models/hermes-core.gguf ou ajuste o caminho em config.py
+---
 
-Inicie o servidor llama.cpp:
+## Troubleshooting (Windows)
 
-bash
-llama-server -m models/hermes-core.gguf --host 0.0.0.0 --port 8080
-Inicie o backend
+| Problema | Solução |
+|---|---|
+| **"Windows protegeu seu computador" (SmartScreen)** | O executável não é assinado digitalmente (assinatura de código paga). Clique em "Mais informações" → "Executar assim mesmo". Isso é esperado para apps não-assinados e não indica malware — mas só rode builds em que você confia na origem. |
+| **Falta o Edge WebView2 Runtime** | Vem pré-instalado no Windows 10/11 atualizado. Se faltar, baixe em https://developer.microsoft.com/microsoft-edge/webview2/ (Evergreen Bootstrapper). |
+| **Porta 8000 ocupada** | Feche outro processo usando a porta (`netstat -ano \| findstr :8000` no cmd, depois `taskkill /PID <pid> /F`) ou feche outra instância do Hermes já aberta. |
+| **"Modelo não encontrado"** | Confirme que o arquivo `.gguf` está exatamente em `models/hermes-core.gguf`, ao lado do `Hermes-ia.exe` (não dentro de uma subpasta extra). |
+| **Janela abre em branco / erro de conexão** | O backend pode não ter subido a tempo (modelo muito grande carregando). Feche e abra de novo; se persistir, confira `data/logs/`. |
+| **Quero ver logs/erros do backend** | Rode via `python main.py` num terminal (modo dev) em vez do `.exe` — aí os logs aparecem no próprio terminal. |
 
-bash
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-Sirva o frontend
+---
 
-bash
-cd frontend
-python -m http.server 3000
-Acesse http://localhost:3000 no navegador.
+## Funcionalidades
 
-Configuração do Modo Engenheiro (opcional)
-Baixe um modelo maior (ex: Qwen 14B ou 32B) e coloque em backend/models/engineer/ ou outro diretório.
+| Funcionalidade | Descrição |
+|---|---|
+| 💬 Chat | Envio de mensagens com streaming SSE, fallback para resposta completa e anexos. |
+| 📁 Projetos | CRUD completo; cada projeto possui instruções, persona, arquivos, escopo de memória e chats associados. |
+| 🗂 Sidebar | Chats fixados, recentes, busca, menu de contexto (fixar, renomear, mover, arquivar, excluir). |
+| 🖼 Galeria | Visualização em grid de todos os arquivos (usuário e sistema) com download/exclusão. |
+| 👤 Perfil | Personalização do tom do Hermes (personalidade, entusiasmo, emojis, memória, etc.). |
+| ⚙️ Configurações | Tema, idioma, notificações, limite de RAM, modo engenheiro (configuração e teste), ações destrutivas. |
+| 🔍 Modo Analista | Verificação rigorosa com decomposição, múltiplos candidatos, juiz, ferramentas e checklists. |
+| 🧠 Pensamento Visível | Exibição do raciocínio interno em tempo real (bloco expansível). |
+| 🚀 Modo Engenheiro | Modelo local maior opcional para tarefas complexas, com integração ao modo Analista. |
+| 📋 Planejamento multi-step | Geração automática de planos de ação para tarefas complexas, com progresso e replanejamento em caso de falha. |
+| 🔧 Ferramentas | Execução segura de Python, shell, leitura de arquivos, busca, indexação, análise estática, compilação. |
+| 🌐 Pesquisa Web | Ativação por chip "Web" — usa SearXNG local para enriquecer respostas com informações da internet. |
+| 📊 Monitor | Medição contínua de RAM/CPU com pausa automática de ferramentas pesadas. |
+| 📝 Logs | Auditoria de todas as execuções de tools, logs de conversa e do modo analista (JSONL). |
+| 🛠️ Domínio Firmware | Agente especializado com ferramentas BLE e compilação PlatformIO. |
+| 📱 Domínio Android | Agente especializado com ferramentas Gradle e validação de layouts. |
+| 🖥️ App Windows nativo | `Hermes-ia.exe` — janela própria via pywebview/WebView2, sem terminal, com splash screen inteligente. |
 
-No frontend, acesse Configurações > Modelos.
+## Roadmap
 
-Preencha o caminho do arquivo .gguf ou a URL do servidor llama.cpp dedicado.
+✅ **MVP** — Backend FastAPI, SQLite, SPA vanilla, integração com LLM local, Agent Loop básico, memória em 3 camadas, classificador heurístico.
 
-Clique em "Testar conexão" para verificar.
+✅ **V1** — Modo Analista completo, streaming SSE, Pensamento Visível, classificador híbrido, monitor de recursos, notificações push, sandbox reforçado, testes automatizados.
 
-Ative o chip "Engenheiro" na barra de mensagens para usar o modelo maior.
+✅ **V2** — Modo Engenheiro, RAG avançado, pesquisa web, planejamento multi-step, especialização por domínio, **empacotamento Windows (.exe)**.
 
-Funcionalidades
-Funcionalidade	Descrição
-💬 Chat	Envio de mensagens com streaming SSE, fallback para resposta completa e anexos.
-📁 Projetos	CRUD completo; cada projeto possui instruções, persona, arquivos, escopo de memória e chats associados.
-🗂 Sidebar	Chats fixados, recentes, busca, menu de contexto (fixar, renomear, mover, arquivar, excluir).
-🖼 Galeria	Visualização em grid de todos os arquivos (usuário e sistema) com download/exclusão.
-👤 Perfil	Personalização do tom do Hermes (personalidade, entusiasmo, emojis, memória, etc.).
-⚙️ Configurações	Tema, idioma, notificações, limite de RAM, modo engenheiro (configuração e teste), ações destrutivas.
-🔍 Modo Analista	Verificação rigorosa com decomposição, múltiplos candidatos, juiz, ferramentas e checklists.
-🧠 Pensamento Visível	Exibição do raciocínio interno em tempo real (bloco expansível) – ativo no Modo Analista.
-🚀 Modo Engenheiro	Modelo local maior opcional para tarefas complexas, com integração ao modo Analista.
-📋 Planejamento multi‑step (V2.2)	Geração automática de planos de ação para tarefas complexas, com exibição de progresso e replanejamento em caso de falha.
-🔧 Ferramentas	Execução segura de Python, shell, leitura de arquivos, busca, indexação, análise estática, compilação.
-🌐 Pesquisa Web	Ativação por chip "Web" – usa SearXNG local para enriquecer respostas com informações da internet.
-📊 Monitor	Medição contínua de RAM/CPU com pausa automática de ferramentas pesadas.
-📝 Logs	Auditoria de todas as execuções de tools, logs de conversa e do modo analista (JSONL).
-🛠️ Domínio Firmware	Agente especializado com ferramentas BLE e compilação PlatformIO.
-📱 Domínio Android	Agente especializado com ferramentas Gradle e validação de layouts.
-Roadmap
-✅ MVP (concluído) – Backend FastAPI, SQLite, SPA vanilla, integração com LLM local, Agent Loop básico, memória em 3 camadas, classificador heurístico.
+🔜 **Próximo** — pacote Linux, interface por voz (STT/TTS), assinatura de código para o `.exe`.
 
-✅ V1 (concluída) – Modo Analista completo, streaming SSE, Pensamento Visível, classificador híbrido, monitor de recursos, notificações push, sandbox reforçado, testes automatizados.
+## Princípios Fundamentais
 
-🟡 V2 (em desenvolvimento) – Modo Engenheiro (implementado), RAG avançado (implementado), pesquisa web (implementada), planejamento multi‑step (implementado), especialização por domínio (implementado), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
+- **Local-first** — Nada depende de nuvem; dados e processamento permanecem na máquina do usuário.
+- **Ferramentas > LLM** — O modelo nunca executa lógica crítica; tudo é delegado a ferramentas determinísticas.
+- **Contexto mínimo necessário** — Memória compactada e priorizada para respeitar o orçamento de tokens.
+- **Iteração contínua** — O agente refina a resposta com base em feedback real das ferramentas.
+- **Sistema testável** — Componentes isolados e cobertos por testes.
+- **Latência como moeda** — No modo Analista, qualidade é priorizada sobre velocidade.
 
-Princípios Fundamentais
-Local-first – Nada depende de nuvem; dados e processamento permanecem na máquina do usuário.
+## Hardware Alvo
 
-Ferramentas > LLM – O modelo nunca executa lógica crítica; tudo é delegado a ferramentas determinísticas.
+| Componente | Especificação |
+|---|---|
+| CPU | AMD Ryzen 5 5500 |
+| GPU | AMD RX 580 8GB (Vulkan) |
+| RAM | 16 GB DDR4 |
 
-Contexto mínimo necessário – Memória compactada e priorizada para respeitar o orçamento de tokens.
-
-Iteração contínua – O agente refina a resposta com base em feedback real das ferramentas.
-
-Sistema testável – Componentes isolados e cobertos por testes.
-
-Latência como moeda – No modo Analista, qualidade é priorizada sobre velocidade.
-
-Hardware Alvo
-Componente	Especificação
-CPU	AMD Ryzen 5 5500
-GPU	AMD RX 580 8GB (Vulkan)
-RAM	16 GB DDR4
 Funciona em configurações mais modestas, ajustando o limite de RAM e o tamanho do modelo.
 
-Privacidade
-100% local – Nenhuma informação é enviada à internet, exceto se o usuário ativar explicitamente a busca web (via SearXNG local).
+## Privacidade
 
-Controle total – Chats, projetos e memórias podem ser apagados a qualquer momento.
+- **100% local** — Nenhuma informação é enviada à internet, exceto se o usuário ativar explicitamente a busca web (via SearXNG local).
+- **Controle total** — Chats, projetos e memórias podem ser apagados a qualquer momento.
+- **Logs anônimos** — Registros de auditoria não contêm identificadores pessoais.
 
-Logs anônimos – Registros de auditoria não contêm identificadores pessoais.
+## Licença
 
-Licença
-MIT – veja o arquivo LICENSE para detalhes.
-
-Desenvolvido por Felipe Sant'Oliver – um assistente de IA para engenheiros, feito por um engenheiro.
+MIT — veja o arquivo `LICENSE` para detalhes.
