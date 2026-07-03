@@ -88,8 +88,9 @@ class AnalystOrchestrator:
     candidatos, autocrítica, juiz, verificação obrigatória por tools,
     refinamento e integração global com checklists de domínio."""
 
-    def __init__(self, llm_client, max_iterations: int = 12):
+    def __init__(self, llm_client, max_iterations: int = 12, engineer_client=None):
         self.llm = llm_client
+        self.engineer_client = engineer_client
         self.max_iterations = max_iterations
         self._iterations_used = 0
         self._log_entries: List[Dict[str, Any]] = []
@@ -199,6 +200,7 @@ class AnalystOrchestrator:
 
     def _generate_candidates(self, conv: List[Dict[str, str]], subtask: str) -> List[str]:
         candidates = []
+        llm = self.engineer_client if self.engineer_client else self.llm
         for i in range(3):
             prompt = (
                 f"Subtarefa: {subtask}\n\n"
@@ -207,7 +209,7 @@ class AnalystOrchestrator:
             )
             call_messages = conv + [{"role": "user", "content": prompt}]
             seed = random.randint(1, 2_147_483_647)
-            text = self._call_llm(call_messages, temperature=0.8, max_tokens=800, seed=seed)
+            text = self._call_llm(call_messages, temperature=0.8, max_tokens=800, seed=seed, _llm=llm)
             candidates.append(text)
         self._log("candidates_generated", {"subtask": subtask, "count": len(candidates)})
         return candidates
@@ -235,7 +237,8 @@ class AnalystOrchestrator:
             '{"choice": <1, 2 ou 3>, "justification": "..."}.'
         )
         call_messages = conv + [{"role": "user", "content": prompt}]
-        raw = self._call_llm(call_messages, temperature=0.2, max_tokens=400)
+        llm = self.engineer_client if self.engineer_client else self.llm
+        raw = self._call_llm(call_messages, temperature=0.2, max_tokens=400, _llm=llm)
         idx, justification = 0, raw
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         if match:
@@ -428,10 +431,11 @@ class AnalystOrchestrator:
     # ------------------------------------------------------------------
     # Utilitários
     # ------------------------------------------------------------------
-    def _call_llm(self, messages: List[Dict[str, str]], temperature: float, max_tokens: int, **kwargs) -> str:
+    def _call_llm(self, messages: List[Dict[str, str]], temperature: float, max_tokens: int, _llm=None, **kwargs) -> str:
         self._iterations_used += 1
+        llm = _llm if _llm else self.llm
         try:
-            return self.llm.generate(messages=messages, max_tokens=max_tokens, temperature=temperature, **kwargs)
+            return llm.generate(messages=messages, max_tokens=max_tokens, temperature=temperature, **kwargs)
         except Exception as e:
             logger.error(f"Erro no LLM (modo analista): {e}")
             return f"[erro ao chamar o modelo: {e}]"

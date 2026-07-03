@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS user_profile (
 _MIGRATIONS = [
     ("user_profile", "show_thinking", "ALTER TABLE user_profile ADD COLUMN show_thinking INTEGER NOT NULL DEFAULT 0"),
     ("user_profile", "engineer_mode_enabled", "ALTER TABLE user_profile ADD COLUMN engineer_mode_enabled INTEGER NOT NULL DEFAULT 0"),
+    ("user_profile", "engineer_model_path", "ALTER TABLE user_profile ADD COLUMN engineer_model_path TEXT"),
+    ("user_profile", "engineer_model_url", "ALTER TABLE user_profile ADD COLUMN engineer_model_url TEXT"),
 ]
 
 

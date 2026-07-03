@@ -108,6 +108,14 @@
       // Modo engenheiro
       engineerModeToggle.checked = !!profile.engineer_mode_enabled;
       applyEngineerModeVisibility(!!profile.engineer_mode_enabled);
+
+      // Carregar campos do modelo engenheiro
+      if (profile.engineer_model_path !== undefined) {
+        document.getElementById('engineer-model-path').value = profile.engineer_model_path || '';
+      }
+      if (profile.engineer_model_url !== undefined) {
+        document.getElementById('engineer-model-url').value = profile.engineer_model_url || '';
+      }
     } catch (err) {
       console.error('[Hermes] Erro ao carregar perfil nas configurações:', err);
     }
@@ -318,4 +326,33 @@
       resourcePollTimer = null;
     }
   }
+
+  /* ---------- Painel Modelos ---------- */
+  const engineerPathInput = document.getElementById('engineer-model-path');
+  const engineerUrlInput = document.getElementById('engineer-model-url');
+  const testEngineerBtn = document.getElementById('test-engineer-btn');
+  const engineerTestResult = document.getElementById('engineer-test-result');
+
+  // Salvar ao blur
+  engineerPathInput.addEventListener('blur', () => {
+    patchProfile({ engineer_model_path: engineerPathInput.value || null });
+  });
+  engineerUrlInput.addEventListener('blur', () => {
+    patchProfile({ engineer_model_url: engineerUrlInput.value || null });
+  });
+
+  testEngineerBtn.addEventListener('click', async () => {
+    engineerTestResult.textContent = 'Testando...';
+    try {
+      const res = await fetch(`${API()}/system/test-engineer`);
+      const data = await res.json();
+      if (data.status === 'ok') {
+        engineerTestResult.textContent = '✅ Conexão OK';
+      } else {
+        engineerTestResult.textContent = '❌ ' + (data.message || 'Falha no teste');
+      }
+    } catch (err) {
+      engineerTestResult.textContent = '❌ Erro ao testar: ' + err.message;
+    }
+  });
 })();

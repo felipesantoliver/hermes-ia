@@ -155,6 +155,8 @@
           <button class="settings-nav-item" data-panel="notificacoes">Notificações</button>
           <button class="settings-nav-item" data-panel="dados">Controle de dados</button>
           <button class="settings-nav-item" data-panel="armazenamento">Armazenamento</button>
+          <!-- NOVO: item de navegação para Modelos -->
+          <button class="settings-nav-item" data-panel="modelos">Modelos</button>
           <button class="settings-nav-item" data-panel="manual">Manual</button>
         </nav>
       </aside>
@@ -283,6 +285,28 @@
               <br>
               Instalar em: <code id="engineer-install-dir">carregando…</code>
             </div>
+          </div>
+        </div>
+
+        <!-- ---------- MODELOS (NOVO PAINEL) ---------- -->
+        <div class="settings-panel" id="panel-modelos">
+          <h2>Modelos</h2>
+
+          <div class="settings-group">
+            <label class="settings-label">Caminho do modelo engenheiro (arquivo .gguf)</label>
+            <input type="text" id="engineer-model-path" class="profile-input" placeholder="ex: ./models/engineer-model.gguf">
+            <div class="settings-row-desc">Deixe em branco se usar um servidor separado.</div>
+          </div>
+
+          <div class="settings-group">
+            <label class="settings-label">URL do servidor do modelo engenheiro</label>
+            <input type="text" id="engineer-model-url" class="profile-input" placeholder="ex: http://localhost:8081">
+            <div class="settings-row-desc">Opcional – se preenchido, substitui o carregamento local.</div>
+          </div>
+
+          <div class="settings-group">
+            <button id="test-engineer-btn" class="primary-btn">Testar conexão</button>
+            <span id="engineer-test-result" style="margin-left:12px; font-size:13px;"></span>
           </div>
         </div>
 

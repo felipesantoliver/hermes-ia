@@ -3,7 +3,7 @@
 **Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
 O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
-> **Status:** ✅ MVP concluído | ✅ V1 concluída | 🟡 V2 em desenvolvimento
+> **Status:** ✅ MVP concluído | ✅ V1 concluída | 🟡 V2 em desenvolvimento (Modo Engenheiro implementado)
 
 ---
 
@@ -32,6 +32,7 @@ O Hermes é um ambiente onde **projetos são entidades vivas**, decisões arquit
 - **Memória estruturada** por projeto (3 camadas: arquitetural, conversacional, código)
 - **Agentes lógicos** configuráveis (Desenvolvedor, Arquiteto, Firmware, Revisor)
 - **Modo Analista** – verificação rigorosa multi-etapa com o mesmo modelo
+- **Modo Engenheiro** – segundo modelo local maior, opcional, para raciocínio mais profundo
 - **Streaming SSE** e **Pensamento Visível** para total transparência
 
 > O objetivo não é gerar respostas – é **resolver problemas de engenharia de forma contínua e incremental**.
@@ -62,7 +63,7 @@ text
 ### Backend (FastAPI)
 - Rotas organizadas por domínio (chat, projetos, perfil, arquivos, sistema)
 - SQLite com migrações automáticas
-- Cliente LLM compatível com API OpenAI (llama.cpp)
+- Cliente LLM compatível com API OpenAI (llama.cpp) e suporte a carregamento embarcado via `llama-cpp-python`
 - Agent Loop com suporte a tools e iterações múltiplas
 - Monitor de recursos em background (RAM/CPU)
 - Log de auditoria de todas as execuções de ferramentas
@@ -77,7 +78,7 @@ text
 ### LLM Core (Qwen 7B–8B)
 - Modelo local quantizado (Q4–Q5) executado via llama.cpp
 - Responsável por interpretação, planejamento, geração de código e decisão de ferramentas
-- **Modo Engenheiro** opcional: segundo modelo maior, ativável pelo usuário, com fallback automático
+- **Modo Engenheiro** opcional: segundo modelo maior (ex: Qwen 14B ou 32B), ativável pelo usuário, com fallback automático
 
 ---
 
@@ -90,6 +91,7 @@ O `AgentLoop` (arquivo `loop.py`):
 3. Se a resposta for uma chamada de ferramenta (JSON), executa e realimenta o resultado
 4. Itera até obter resposta final ou atingir o limite
 5. No **Modo Analista**, delega para o `AnalystOrchestrator`
+6. No **Modo Engenheiro**, usa o modelo maior com menos iterações (4)
 
 ### Agentes Lógicos
 Configurações de comportamento definidas por system prompt, ferramentas e recorte de contexto.  
@@ -134,6 +136,14 @@ Ativado manualmente ou automaticamente para contextos de alto rigor. Processo:
 3. Integração global com debate interno (Arquiteto vs. Revisor) e checklists de domínio
 4. Resposta final com resumo, solução e evidências
 
+### Modo Engenheiro (V2.1)
+- **Segundo modelo local maior** (ex: Qwen 14B, 32B), quantizado, opcional.
+- **Configuração**: via painel "Modelos" nas configurações – defina o caminho do arquivo `.gguf` ou a URL de um servidor llama.cpp dedicado.
+- **Ativação**: chip "Engenheiro" na barra de mensagens.
+- **Comportamento**: usa o modelo maior diretamente, com no máximo 4 iterações, mantendo a verificação por tools e memória.
+- **Integração com o Analista**: se disponível, o modo Analista utiliza o modelo engenheiro para gerar candidatos e atuar como juiz, aumentando a qualidade sem custo extra de iterações.
+- **Fallback**: se o modelo engenheiro não estiver configurado ou falhar, o sistema volta automaticamente ao modelo padrão, com log.
+
 ### Pensamento Visível
 Quando ativado, o backend emite eventos `thinking` (SSE) com a narrativa do raciocínio. O frontend exibe isso em um bloco expansível acima da resposta final.
 
@@ -147,7 +157,7 @@ Quando o uso de RAM ultrapassa 80% do limite configurado, o sistema entra em `un
 
 ### Perfil e Configurações
 - **Perfil**: nome, apelido do Hermes, personalidade, filtro de conteúdo, memória, pensamento visível, etc.
-- **Configurações**: tema, idioma, notificações, limite de RAM, modo engenheiro, ações destrutivas.
+- **Configurações**: tema, idioma, notificações, limite de RAM, modo engenheiro (com campos para path/URL e teste), ações destrutivas.
 
 ---
 
@@ -158,18 +168,18 @@ hermes-ai/
 │ │ ├── main.py # FastAPI – ponto de entrada
 │ │ ├── config.py # Configurações globais
 │ │ ├── db.py # SQLite + migrações
-│ │ ├── llm.py # Cliente HTTP para llama.cpp
+│ │ ├── llm.py # Cliente HTTP para llama.cpp + suporte a modelo embarcado
 │ │ ├── monitor.py # Monitor de RAM/CPU
 │ │ ├── chat.py # Rotas /chat (stream e não-stream)
 │ │ ├── chats.py # CRUD de chats
 │ │ ├── projects.py # CRUD de projetos e arquivos
 │ │ ├── files.py # Upload/download de arquivos
-│ │ ├── profile.py # Perfil do usuário
+│ │ ├── profile.py # Perfil do usuário (inclui campos do modo engenheiro)
 │ │ ├── profile_prompt.py # System prompt a partir do perfil
-│ │ ├── system.py # Status do sistema e pré-requisitos
+│ │ ├── system.py # Status do sistema, pré-requisitos e teste do modo engenheiro
 │ │ ├── orchestrator/ # Núcleo da lógica do agente
 │ │ │ ├── loop.py # AgentLoop principal
-│ │ │ ├── analyst.py # Modo Analista
+│ │ │ ├── analyst.py # Modo Analista (com suporte a engenheiro)
 │ │ │ ├── router.py # Classificador híbrido
 │ │ │ └── context_builder.py # Montagem do contexto/memória
 │ │ ├── memory/ # Acesso à memória (3 camadas)
@@ -194,7 +204,7 @@ hermes-ai/
 │ ├── requirements.txt
 │ └── README.md
 ├── frontend/
-│ ├── index.html # Estrutura da SPA
+│ ├── index.html # Estrutura da SPA (inclui painel "Modelos" nas configurações)
 │ ├── css/ # Estilos modulares
 │ │ ├── theme.css
 │ │ ├── layout.css
@@ -210,7 +220,7 @@ hermes-ai/
 │ ├── chats.js # Sidebar e lista de chats
 │ ├── projects.js # Gestão de projetos
 │ ├── gallery.js # Galeria de arquivos
-│ ├── settings.js # Configurações
+│ ├── settings.js # Configurações (inclui painel "Modelos")
 │ ├── profile.js # Perfil do usuário
 │ ├── notifications.js # Notificações push
 │ └── spheres.js # Three.js (intro e mini-esfera)
@@ -230,6 +240,7 @@ text
 - **SearXNG** (opcional, para busca web)
 - **PlatformIO** (opcional, para compilação de firmware)
 - **Bandit / ShellCheck** (opcionais, para análise estática)
+- **llama-cpp-python** (opcional, para carregamento embarcado do modelo engenheiro)
 
 ### Passos
 
@@ -266,6 +277,13 @@ cd frontend
 python -m http.server 3000
 Acesse http://localhost:3000 no navegador.
 
+### Configuração do Modo Engenheiro (opcional)
+1. Baixe um modelo maior (ex: Qwen 14B ou 32B) e coloque em `backend/models/engineer/` ou outro diretório.
+2. No frontend, acesse Configurações > Modelos.
+3. Preencha o caminho do arquivo `.gguf` ou a URL do servidor llama.cpp dedicado.
+4. Clique em "Testar conexão" para verificar.
+5. Ative o chip "Engenheiro" na barra de mensagens para usar o modelo maior.
+
 Funcionalidades
 Funcionalidade	Descrição
 💬 Chat	Envio de mensagens com streaming SSE, fallback para resposta completa e anexos.
@@ -273,10 +291,10 @@ Funcionalidade	Descrição
 🗂 Sidebar	Chats fixados, recentes, busca, menu de contexto (fixar, renomear, mover, arquivar, excluir).
 🖼 Galeria	Visualização em grid de todos os arquivos (usuário e sistema) com download/exclusão.
 👤 Perfil	Personalização do tom do Hermes (personalidade, entusiasmo, emojis, memória, pensamento visível).
-⚙️ Configurações	Tema, idioma, notificações, limite de RAM, modo engenheiro, ações destrutivas.
+⚙️ Configurações	Tema, idioma, notificações, limite de RAM, modo engenheiro (configuração e teste), ações destrutivas.
 🔍 Modo Analista	Verificação rigorosa com decomposição, múltiplos candidatos, juiz, ferramentas e checklists.
 🧠 Pensamento Visível	Exibição do raciocínio interno em tempo real (bloco expansível).
-🚀 Modo Engenheiro	Modelo local maior opcional para tarefas complexas.
+🚀 Modo Engenheiro	Modelo local maior opcional para tarefas complexas, com integração ao modo Analista.
 🔧 Ferramentas	Execução segura de Python, shell, leitura de arquivos, busca, indexação, análise estática, compilação.
 📊 Monitor	Medição contínua de RAM/CPU com pausa automática de ferramentas pesadas.
 📝 Logs	Auditoria de todas as execuções de tools, logs de conversa e do modo analista (JSONL).
@@ -291,7 +309,7 @@ Modo Analista completo, streaming SSE, Pensamento Visível, classificador híbri
 
 🟡 V2 (em desenvolvimento)
 
-Modo Engenheiro, RAG avançado (busca semântica com FAISS), planejamento multi-step, especialização por domínio (Android, BLE…), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
+Modo Engenheiro (implementado), RAG avançado (busca semântica com FAISS), planejamento multi-step, especialização por domínio (Android, BLE…), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
 
 Princípios Fundamentais
 Local-first – Nada depende de nuvem; dados e processamento permanecem na máquina do usuário.

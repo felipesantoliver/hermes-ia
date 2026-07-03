@@ -5,7 +5,7 @@ from typing import Optional
 
 class Settings:
     APP_NAME: str = "Hermes AI"
-    VERSION: str = "0.1.0"
+    VERSION: str = "0.2.0"  # V2
 
     # Caminho local do modelo LLM (ajustar conforme sua instalação)
     MODEL_PATH: str = "./models/hermes-core.gguf"
@@ -28,6 +28,7 @@ class Settings:
     ENGINEER_MODEL_NAME: str = "engineer"
     ENGINEER_MODEL_DOWNLOAD_URL: str = "https://huggingface.co/models?search=qwen+gguf"
     ENGINEER_MODEL_INSTALL_DIR: str = "./models/engineer/"
+    ENGINEER_MODEL_PATH: str = ""  # caminho do arquivo .gguf para carregamento embarcado (opcional)
 
     # SearXNG local (WebSearchTool) - instância self-hosted, não serviço externo
     SEARXNG_BASE_URL: str = "http://localhost:8081"

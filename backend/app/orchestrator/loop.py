@@ -18,10 +18,11 @@ RESOURCE_PRESSURE_MESSAGE = "Recursos escassos, resposta pode demorar"
 
 
 class AgentLoop:
-    def __init__(self, llm_client: LLMClient, max_iterations: int = 6, analyst_max_iterations: int = 12):
+    def __init__(self, llm_client: LLMClient, max_iterations: int = 6, analyst_max_iterations: int = 12, engineer_max_iterations: int = 4):
         self.llm = llm_client
         self.max_iterations = max_iterations
         self.analyst_max_iterations = analyst_max_iterations
+        self.engineer_max_iterations = engineer_max_iterations
 
     # ------------------------------------------------------------------
     # Setup compartilhado entre run() e run_stream(): monta o system prompt
@@ -116,10 +117,11 @@ class AgentLoop:
         # configurado; caso contrário, o LLMClient já faz fallback para o
         # modelo padrão internamente (ver LLMClient._resolve_model).
         llm_model = "engineer" if mode == "engineer" else "default"
+        max_iter = self.engineer_max_iterations if mode == "engineer" else self.max_iterations
 
         # Loop principal
         iteration = 0
-        while iteration < self.max_iterations:
+        while iteration < max_iter:
             iteration += 1
             # Chamar LLM
             try:
@@ -241,9 +243,10 @@ class AgentLoop:
         # configurado; caso contrário, o LLMClient já faz fallback para o
         # modelo padrão internamente (ver LLMClient._resolve_model).
         llm_model = "engineer" if mode == "engineer" else "default"
+        max_iter = self.engineer_max_iterations if mode == "engineer" else self.max_iterations
 
         iteration = 0
-        while iteration < self.max_iterations:
+        while iteration < max_iter:
             iteration += 1
 
             # Se a pressão surgiu no meio do loop (ainda não avisada), avisa agora.

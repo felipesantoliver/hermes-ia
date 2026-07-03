@@ -79,5 +79,23 @@ def get_engineer_info():
     return {
         "download_url": settings.ENGINEER_MODEL_DOWNLOAD_URL,
         "install_dir": settings.ENGINEER_MODEL_INSTALL_DIR,
-        "configured": bool(settings.ENGINEER_MODEL_BASE_URL),
+        "configured": bool(settings.ENGINEER_MODEL_BASE_URL) or bool(settings.ENGINEER_MODEL_PATH),
     }
+
+
+@router.get("/test-engineer")
+def test_engineer():
+    """Testa a conectividade com o modelo engenheiro (servidor ou embarcado)."""
+    from .llm import get_llm_client
+    client = get_llm_client()
+    if not client.has_engineer():
+        return {"status": "unavailable", "message": "Modelo engenheiro não configurado"}
+    try:
+        response = client.generate(
+            messages=[{"role": "user", "content": "Diga 'ok'"}],
+            max_tokens=10,
+            model="engineer"
+        )
+        return {"status": "ok", "message": "Conexão bem-sucedida", "response": response}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

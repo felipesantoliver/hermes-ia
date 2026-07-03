@@ -27,6 +27,8 @@ class ProfileOut(BaseModel):
     push_on_response_done: bool
     show_thinking: bool
     engineer_mode_enabled: bool
+    engineer_model_path: Optional[str] = None
+    engineer_model_url: Optional[str] = None
 
 
 class ProfileUpdate(BaseModel):
@@ -47,6 +49,8 @@ class ProfileUpdate(BaseModel):
     push_on_response_done: Optional[bool] = None
     show_thinking: Optional[bool] = None
     engineer_mode_enabled: Optional[bool] = None
+    engineer_model_path: Optional[str] = None
+    engineer_model_url: Optional[str] = None
 
 
 def _row_to_profile(row) -> dict:
@@ -68,6 +72,8 @@ def _row_to_profile(row) -> dict:
         "push_on_response_done": bool(row["push_on_response_done"]),
         "show_thinking": bool(row["show_thinking"]),
         "engineer_mode_enabled": bool(row["engineer_mode_enabled"]),
+        "engineer_model_path": row.get("engineer_model_path"),
+        "engineer_model_url": row.get("engineer_model_url"),
     }
 
 
@@ -110,6 +116,7 @@ def update_profile(payload: ProfileUpdate):
             cur.execute("SELECT * FROM user_profile WHERE id = 1")
             return _row_to_profile(cur.fetchone())
 
+        # Converte campos booleanos para inteiros (SQLite armazena como 0/1)
         for k in ("use_saved_memory", "push_on_response_done", "show_thinking", "engineer_mode_enabled"):
             if k in fields:
                 fields[k] = int(fields[k])
