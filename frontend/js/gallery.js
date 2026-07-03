@@ -12,6 +12,7 @@
   let allItems = [];
   let activeFilter = 'all'; // 'all' | 'uploaded' | 'generated'
   let searchTerm = '';
+  let semanticSearchActive = false; // <-- NOVO: indica se a busca semântica foi ativada
 
   /* ---------- Navegação para a view de galeria ---------- */
   document.getElementById('gallery-nav-btn').addEventListener('click', () => {
@@ -46,7 +47,10 @@
           <button class="gallery-chip" data-filter="uploaded">Enviados</button>
           <button class="gallery-chip" data-filter="generated">Gerados</button>
         </div>
-        <input type="text" id="gallery-search" class="gallery-search" placeholder="Buscar por nome...">
+        <div style="display:flex; gap:8px; flex:1; max-width:420px;">
+          <input type="text" id="gallery-search" class="gallery-search" placeholder="Buscar por nome ou conteúdo...">
+          <button id="gallery-semantic-search-btn" class="primary-btn" style="padding:8px 14px; font-size:13px;">🔍 Inteligente</button>
+        </div>
       </div>
       <div id="gallery-grid" class="gallery-grid"></div>
     `;
@@ -63,6 +67,18 @@
     const searchInput = document.getElementById('gallery-search');
     searchInput.addEventListener('input', () => {
       searchTerm = searchInput.value.trim().toLowerCase();
+      semanticSearchActive = false; // busca por nome cancela a semântica
+      renderGrid();
+    });
+
+    // Botão de busca semântica
+    document.getElementById('gallery-semantic-search-btn').addEventListener('click', () => {
+      const query = document.getElementById('gallery-search').value.trim();
+      if (!query) {
+        alert('Digite uma consulta para a busca inteligente.');
+        return;
+      }
+      semanticSearchActive = true;
       renderGrid();
     });
   }
@@ -74,6 +90,7 @@
     grid.innerHTML = `<div class="chat-list-empty">Carregando arquivos...</div>`;
 
     try {
+      // Carrega todos os itens (sem filtro de busca semântica)
       const res = await fetch(`${API()}/files/all-sources`);
       if (!res.ok) throw new Error('Falha ao carregar arquivos');
       allItems = await res.json();
@@ -97,11 +114,30 @@
   }
 
   /* ---------- Grid de cards ---------- */
-  function renderGrid() {
+  async function renderGrid() {
     const grid = document.getElementById('gallery-grid');
     if (!grid) return;
 
-    const filtered = allItems.filter((i) => matchesFilter(i) && matchesSearch(i));
+    let filtered = allItems.filter((i) => matchesFilter(i));
+
+    // Se busca semântica estiver ativa, consulta o backend com parâmetro search
+    if (semanticSearchActive && searchTerm) {
+      try {
+        const res = await fetch(`${API()}/files/all-sources?search=${encodeURIComponent(searchTerm)}`);
+        if (!res.ok) throw new Error('Falha na busca semântica');
+        const semanticItems = await res.json();
+        // Substitui a lista filtrada pelos itens semânticos (já filtrados pelo backend)
+        filtered = semanticItems;
+      } catch (err) {
+        console.error('[Hermes] Erro na busca semântica:', err);
+        alert('Erro na busca inteligente. Tente novamente.');
+        semanticSearchActive = false;
+        filtered = allItems.filter((i) => matchesFilter(i) && matchesSearch(i));
+      }
+    } else {
+      // Filtro por nome normal
+      filtered = filtered.filter(matchesSearch);
+    }
 
     if (allItems.length === 0) {
       grid.innerHTML = `

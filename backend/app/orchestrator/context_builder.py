@@ -8,11 +8,13 @@
 #   2. code_rag              (trechos relevantes do projeto)
 #   3. conversation_memory   (resumo conversacional)
 #   4. code_memory           (memória de código)
+#   5. file_rag              (trechos de documentos da galeria)  <-- NOVO
 
 from typing import Optional, List
 from ..config import settings
 from . import store
-from .code_rag import retrieve  # novo import
+from .code_rag import retrieve  # import existente
+from ..memory.file_rag import search_documents   # <-- NOVO
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,7 +25,7 @@ MEMORY_BUDGET_RATIO = 0.25
 
 VALID_SCOPES = {"isolated", "isolated_read_external", "none"}
 
-# Heurística para ativar RAG: palavras-chave técnicas
+# Heurística para ativar RAG: palavras-chave técnicas (existente)
 RAG_TRIGGER_WORDS = {
     "def", "class", "import", "from", "return", "if", "else", "for", "while",
     "try", "except", "raise", "with", "as", "lambda", "yield",
@@ -31,6 +33,8 @@ RAG_TRIGGER_WORDS = {
     "refatoração", "otimizar", "performance", "error", "exceção", "teste",
     "unitário", "integração", "arquivo", ".py", ".js", ".ts", ".c", ".h",
     ".cpp", ".java", ".go", ".rs", ".rb", ".php",
+    # Palavras que indicam referência a documentos
+    "documento", "pdf", "manual", "especificação", "datasheet", "guia",
 }
 
 
@@ -60,7 +64,7 @@ def _format_code(items: List[dict]) -> List[str]:
 
 
 def _format_rag(results: List[dict]) -> List[str]:
-    """Formata os trechos retornados pelo RAG."""
+    """Formata os trechos retornados pelo RAG de código."""
     lines = []
     for r in results:
         file = r.get("file", "desconhecido")
@@ -71,12 +75,22 @@ def _format_rag(results: List[dict]) -> List[str]:
     return lines
 
 
+def _format_file_rag(results: List[dict]) -> List[str]:
+    """Formata os trechos retornados pelo RAG de documentos (galeria)."""
+    lines = []
+    for r in results:
+        file_path = r.get("file_path", "desconhecido")
+        chunk = r.get("chunk_text", "").strip()
+        if chunk:
+            lines.append(f"- [Trecho de documento] {file_path}:\n> {chunk[:500]}")
+    return lines
+
+
 def _should_use_rag(user_message: str) -> bool:
-    """Heurística para decidir se a mensagem é técnica e merece RAG."""
+    """Heurística para decidir se a mensagem é técnica e merece RAG (código ou documentos)."""
     if not user_message:
         return False
     text = user_message.lower()
-    # Verifica presença de palavras-chave
     for word in RAG_TRIGGER_WORDS:
         if word in text:
             return True
@@ -84,12 +98,9 @@ def _should_use_rag(user_message: str) -> bool:
 
 
 def _fetch_layers(project_id: Optional[str], chat_id: Optional[str], scope: Optional[str]):
-    """
-    Retorna (architectural_lines, conversation_lines, code_lines) já formatados,
-    de acordo com o memory_scope resolvido.
-    """
+    """Retorna (architectural_lines, conversation_lines, code_lines) já formatados,
+    de acordo com o memory_scope resolvido."""
     if project_id is None:
-        # Chat solto: sempre memória geral (project_id IS NULL).
         arch = store.list_architectural(None)
         conv = store.list_conversation_memory(None)
         code = store.list_code_memory(None)
@@ -105,11 +116,7 @@ def _fetch_layers(project_id: Optional[str], chat_id: Optional[str], scope: Opti
         conv = store.list_conversation_memory(project_id, include_external=True)
         code = store.list_code_memory(project_id, include_external=True)
 
-    else:
-        # "none": sem isolamento por projeto — tratamento geral por chat.
-        # Usa memória geral (project_id IS NULL) e, se houver chat_id,
-        # também os resumos conversacionais amarrados a esse chat
-        # especificamente (mesmo que tenham sido gravados com project_id).
+    else:  # "none"
         arch = store.list_architectural(None)
         code = store.list_code_memory(None)
         conv = store.list_conversation_memory(None)
@@ -131,14 +138,15 @@ def build_memory_context(
     project_id: Optional[str] = None,
     chat_id: Optional[str] = None,
     user_message: Optional[str] = None,
+    mode: Optional[str] = None,   # <-- NOVO parâmetro para detectar modo analista
 ) -> str:
     """
     Monta o bloco de texto de memória a ser injetado no system prompt.
     Retorna string vazia se:
       - use_saved_memory=false no perfil (disjuntor geral, sobrepõe tudo), ou
       - não houver nenhuma memória relevante.
-    Agora também inclui RAG se a mensagem do usuário for técnica e o projeto
-    possuir índice.
+    Inclui RAG de código (existente) e RAG de documentos (novo) se a mensagem for técnica
+    ou se o modo for 'analyst'.
     """
     if not store.get_use_saved_memory():
         return ""
@@ -151,21 +159,40 @@ def build_memory_context(
 
     arch_lines, conv_lines, code_lines = _fetch_layers(project_id, chat_id, scope)
     rag_lines = []
+    file_rag_lines = []
 
-    # RAG: se houver mensagem do usuário e projeto, e a heurística ativar
+    # RAG de código: se houver mensagem do usuário e projeto, e a heurística ativar
     if project_id and user_message and _should_use_rag(user_message):
         try:
             results = retrieve(project_id, user_message, top_k=4)
             if results:
                 rag_lines = _format_rag(results)
-                logger.info(f"RAG: {len(rag_lines)} trechos recuperados para projeto {project_id}")
+                logger.info(f"RAG (código): {len(rag_lines)} trechos recuperados para projeto {project_id}")
         except Exception as e:
-            logger.warning(f"Falha no RAG para projeto {project_id}: {e}")
+            logger.warning(f"Falha no RAG de código para projeto {project_id}: {e}")
 
-    # Agrupar por prioridade: arch, rag, conv, code
+    # RAG de documentos: sempre no modo analista, ou se a heurística ativar
+    use_file_rag = (mode == "analyst") or (user_message and _should_use_rag(user_message))
+    if use_file_rag:
+        try:
+            # Busca documentos do projeto e também loose files (se não houver projeto)
+            file_results = search_documents(
+                query=user_message or "",
+                project_id=project_id,
+                include_loose=(project_id is None),
+                top_k=3
+            )
+            if file_results:
+                file_rag_lines = _format_file_rag(file_results)
+                logger.info(f"RAG (documentos): {len(file_rag_lines)} trechos recuperados")
+        except Exception as e:
+            logger.warning(f"Falha no RAG de documentos: {e}")
+
+    # Agrupar por prioridade: arch, code_rag, file_rag, conv, code
     groups = [
         ("Decisões arquiteturais", arch_lines),
         ("Código relevante do projeto", rag_lines),
+        ("Trechos de documentos", file_rag_lines),
         ("Resumo conversacional", conv_lines),
         ("Memória de código", code_lines),
     ]
@@ -177,18 +204,15 @@ def build_memory_context(
     for header, lines in groups:
         if not lines:
             continue
-        # Adiciona cabeçalho apenas se houver linhas
         included.append(f"\n{header}:")
         for line in lines:
             cost = _approx_tokens(line)
             if used + cost > budget:
-                # Se estourar, para de adicionar linhas deste grupo e pula para o próximo
-                # (mas mantém o cabeçalho já adicionado)
                 break
             included.append(line)
             used += cost
 
-    if len(included) <= 1:  # apenas cabeçalhos ou vazio
+    if len(included) <= 1:
         return ""
 
     return "\n".join(included)

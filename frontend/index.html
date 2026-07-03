@@ -154,7 +154,25 @@
 
     <section id="view-projects" class="view"></section>
 
-    <section id="view-gallery" class="view"></section>
+    <!-- ============ VIEW GALERIA ============ -->
+    <section id="view-gallery" class="view">
+      <div class="gallery-container">
+        <!-- Barra de ferramentas -->
+        <div class="gallery-toolbar">
+          <div class="gallery-chips">
+            <button class="gallery-chip active" data-filter="all">Todos</button>
+            <button class="gallery-chip" data-filter="uploaded">Enviados</button>
+            <button class="gallery-chip" data-filter="generated">Gerados</button>
+          </div>
+          <div style="display:flex; gap:8px; flex:1; max-width:420px;">
+            <input type="text" id="gallery-search" class="gallery-search" placeholder="Buscar por nome ou conteúdo...">
+            <button id="gallery-semantic-search-btn" class="primary-btn" style="padding:8px 14px; font-size:13px;">🔍 Inteligente</button>
+          </div>
+        </div>
+        <!-- Grid de itens da galeria -->
+        <div id="gallery-items" class="gallery-grid"></div>
+      </div>
+    </section>
 
   </main>
 

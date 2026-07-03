@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .db import db_cursor, new_id, now_iso, LOOSE_FILES_DIR
+from .memory.file_rag import index_loose_file, index_project_documents, search_documents, delete_document_index
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -72,7 +73,16 @@ async def upload_loose_file(chat_id: Optional[str] = None, file: UploadFile = Fi
             (fid, chat_id, file.filename, ext.lstrip("."), str(stored_path), len(contents), ts),
         )
         cur.execute("SELECT * FROM loose_files WHERE id = ?", (fid,))
-        return _row_to_loose(cur.fetchone())
+        row = cur.fetchone()
+
+    # Indexar o documento (se suportado)
+    try:
+        index_loose_file(fid, stored_path)
+    except Exception as e:
+        # Não interrompe o upload; apenas log
+        print(f"Erro ao indexar arquivo {fid}: {e}")
+
+    return _row_to_loose(row)
 
 
 def save_generated_file(chat_id: Optional[str], filename: str, path: str) -> dict:
@@ -91,7 +101,15 @@ def save_generated_file(chat_id: Optional[str], filename: str, path: str) -> dic
             (fid, chat_id, filename, ext, str(p), p.stat().st_size, ts),
         )
         cur.execute("SELECT * FROM loose_files WHERE id = ?", (fid,))
-        return _row_to_loose(cur.fetchone())
+        row = cur.fetchone()
+
+    # Indexar o documento (se suportado)
+    try:
+        index_loose_file(fid, p)
+    except Exception as e:
+        print(f"Erro ao indexar arquivo gerado {fid}: {e}")
+
+    return _row_to_loose(row)
 
 
 @router.get("/", response_model=List[LooseFileOut])
@@ -112,7 +130,9 @@ def list_loose_files(origin: Optional[str] = None, chat_id: Optional[str] = None
 
 
 @router.get("/all-sources", response_model=List[GalleryItemOut])
-def list_all_sources():
+def list_all_sources(
+    search: Optional[str] = Query(None, description="Busca semântica por conteúdo dos documentos")
+):
     items = []
     with db_cursor() as cur:
         cur.execute("SELECT * FROM loose_files ORDER BY created_at DESC")
@@ -143,6 +163,20 @@ def list_all_sources():
                 "project_id": r["project_id"],
             })
 
+    # Se houver busca semântica, usar RAG para encontrar arquivos relevantes
+    if search and search.strip():
+        # Buscar trechos relevantes (tanto de projetos quanto loose)
+        results = search_documents(search, project_id=None, include_loose=True, top_k=20)
+        # Coletar IDs de arquivos que aparecem nos resultados
+        relevant_ids = set()
+        for res in results:
+            file_id = res.get("file_id")
+            if file_id:
+                relevant_ids.add(file_id)
+        # Filtrar a lista de itens
+        if relevant_ids:
+            items = [item for item in items if item["id"] in relevant_ids]
+
     items.sort(key=lambda x: x["created_at"], reverse=True)
     return items
 
@@ -169,12 +203,22 @@ def delete_loose_file(file_id: str):
         cur.execute("SELECT * FROM loose_files WHERE id = ?", (file_id,))
         row = cur.fetchone()
         if row is not None:
+            # Remover do índice de documentos (loose)
+            try:
+                delete_document_index(file_id, project_id=None)
+            except Exception as e:
+                print(f"Erro ao remover índice do arquivo {file_id}: {e}")
             cur.execute("DELETE FROM loose_files WHERE id = ?", (file_id,))
         else:
             cur.execute("SELECT * FROM project_files WHERE id = ?", (file_id,))
             row = cur.fetchone()
             if row is None:
                 raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+            # Remover do índice de documentos do projeto
+            try:
+                delete_document_index(file_id, project_id=row["project_id"])
+            except Exception as e:
+                print(f"Erro ao remover índice do arquivo {file_id}: {e}")
             cur.execute("DELETE FROM project_files WHERE id = ?", (file_id,))
     path = Path(row["stored_path"])
     if path.exists():

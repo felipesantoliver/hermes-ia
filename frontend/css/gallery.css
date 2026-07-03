@@ -28,7 +28,7 @@
 .gallery-search{
   background:var(--bg-panel);border:1px solid var(--line);border-radius:10px;
   color:var(--text-hi);font-family:var(--font-body);font-size:13px;
-  padding:9px 14px;outline:none;min-width:220px;flex:1;max-width:320px;
+  padding:9px 14px;outline:none;flex:1;
 }
 .gallery-search:focus{border-color:var(--purple-soft);}
 
