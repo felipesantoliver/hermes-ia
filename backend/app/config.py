@@ -22,5 +22,11 @@ class Settings:
     ENGINEER_MODEL_BASE_URL: Optional[str] = None  # ex: "http://localhost:8081"
     ENGINEER_MODEL_NAME: str = "engineer"
 
+    # SearXNG local (WebSearchTool) - instância self-hosted, não serviço externo
+    SEARXNG_BASE_URL: str = "http://localhost:8081"
+
+    # CodebaseIndexTool - mesmo modelo de embeddings usado no router de agentes
+    CODE_EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
+
 
 settings = Settings()

@@ -6,3 +6,7 @@ python-multipart
 pytest
 sentence-transformers
 numpy
+faiss-cpu
+bandit
+# shellcheck NÃO é um pacote pip (binário Haskell) - instale via
+# `sudo apt install shellcheck` ou `pip install shellcheck-py` (wrapper opcional)
