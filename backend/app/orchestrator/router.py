@@ -355,7 +355,7 @@ class HybridAgentRouter:
         """
         if mode == "code":
             return {"agent": "developer", "agents": ["developer"], "score": None, "method": "mode_override"}
-        if mode == "think":
+        if mode == "engineer":
             return {"agent": "architect", "agents": ["architect"], "score": None, "method": "mode_override"}
 
         agent, score = self._classify_by_embedding(user_message)

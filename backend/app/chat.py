@@ -20,9 +20,10 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    mode: Optional[str] = None          # "code", "think" ou "analyst"
+    mode: Optional[str] = None          # "code", "engineer" ou "analyst"
     project_id: Optional[str] = None
     chat_id: str                        # obrigatório, pois já criamos antes
+    show_thinking: bool = False         # ativa o streaming do raciocínio interno ("thinking")
 
 
 class ChatResponse(BaseModel):
@@ -82,8 +83,8 @@ async def _build_chat_context(payload: ChatRequest) -> dict:
     # 5. Ajustar tom conforme mode
     if payload.mode == "code":
         system_prompt += "\n\nModo programação: foque em código, estrutura e soluções técnicas. Seja objetivo e evite divagações."
-    elif payload.mode == "think":
-        system_prompt += "\n\nModo pensador: explore o problema com raciocínio detalhado, considere alternativas e discuta implicações."
+    elif payload.mode == "engineer":
+        system_prompt += "\n\nModo engenheiro: explore o problema com raciocínio detalhado, considere alternativas e discuta implicações, usando o modelo local maior quando disponível."
 
     # 5b. Heurística de escalonamento para o Modo Analista: se o chip "analyst"
     # não estiver ativo mas o perfil pedir alto rigor (personalidade "técnico"
@@ -156,13 +157,20 @@ async def _sse_event_stream(payload: ChatRequest, llm: LLMClient) -> AsyncIterat
     """Gera os eventos SSE (text/event-stream) para a rota /chat/stream.
 
     Eventos emitidos:
-      event: token   data: {"token": "..."}        -> um fragmento de texto
-      event: system  data: {"message": "..."}       -> aviso do sistema (ex:
+      event: token    data: {"token": "..."}        -> um fragmento de texto
+      event: thinking data: {"token": "..."}        -> um fragmento do
+                                                         raciocínio interno
+                                                         (só quando
+                                                         payload.show_thinking
+                                                         é True), nunca
+                                                         concatenado à
+                                                         resposta final
+      event: system   data: {"message": "..."}      -> aviso do sistema (ex:
                                                          recursos sob pressão),
                                                          nunca concatenado à
                                                          resposta do Hermes
-      event: error   data: {"error": "..."}         -> erro durante a geração
-      event: done    data: {}                        -> fim do stream (sucesso)
+      event: error    data: {"error": "..."}        -> erro durante a geração
+      event: done     data: {}                        -> fim do stream (sucesso)
     """
     try:
         ctx = await _build_chat_context(payload)
@@ -181,12 +189,18 @@ async def _sse_event_stream(payload: ChatRequest, llm: LLMClient) -> AsyncIterat
             chat_id=payload.chat_id,
             mode=ctx["effective_mode"],
             agent_type=ctx["agent_type"],
+            show_thinking=payload.show_thinking,
         ):
             event_type = item.get("event", "token")
             data = item.get("data", "")
             if event_type == "system":
                 sys_payload = json.dumps({"message": data}, ensure_ascii=False)
                 yield f"event: system\ndata: {sys_payload}\n\n"
+                continue
+            if event_type == "thinking":
+                # Narrativa do raciocínio interno: nunca entra em full_response.
+                thinking_payload = json.dumps({"token": data}, ensure_ascii=False)
+                yield f"event: thinking\ndata: {thinking_payload}\n\n"
                 continue
             full_response += data
             token_payload = json.dumps({"token": data}, ensure_ascii=False)

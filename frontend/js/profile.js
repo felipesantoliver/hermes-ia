@@ -24,6 +24,7 @@
     enthusiasmScale: document.getElementById('enthusiasm-scale'),
     emojiScale: document.getElementById('emoji-scale'),
     memoryToggle: document.getElementById('memory-toggle'),
+    showThinkingToggle: document.getElementById('show-thinking-toggle'),
   };
 
   let profileLoaded = false;
@@ -87,6 +88,9 @@
 
     // Memória
     els.memoryToggle.checked = !!profile.use_saved_memory;
+
+    // Pensamento visível
+    els.showThinkingToggle.checked = !!profile.show_thinking;
   }
 
   function setScaleActive(container, value) {
@@ -178,6 +182,15 @@
   /* ---------- Toggle de memória ---------- */
   els.memoryToggle.addEventListener('change', () => {
     saveNow({ use_saved_memory: els.memoryToggle.checked });
+  });
+
+  /* ---------- Toggle de pensamento visível (sincroniza com o chip do chat) ---------- */
+  els.showThinkingToggle.addEventListener('change', () => {
+    if (window.HermesSetShowThinking) {
+      window.HermesSetShowThinking(els.showThinkingToggle.checked); // já persiste via PATCH
+    } else {
+      saveNow({ show_thinking: els.showThinkingToggle.checked });
+    }
   });
 
   // Salva qualquer campo pendente se o usuário fechar o modal antes dos 500ms.

@@ -82,9 +82,63 @@
   });
 
   const introEl = document.getElementById('intro');
+  const introLabel = document.getElementById('intro-label');
   const appEl = document.getElementById('app');
+  const retryBtn = document.getElementById('intro-retry-btn');
+  const continueBtn = document.getElementById('intro-continue-btn');
 
-  function finishIntro() {
+  const MIN_SPLASH_MS = 3000;
+  const POLL_INTERVAL_MS = 500;
+  const SAFETY_TIMEOUT_MS = 15000;
+
+  const STEP_LABELS = {
+    backend: 'Conectando ao núcleo…',
+    llm: 'Carregando o modelo local…',
+    db: 'Verificando banco de dados…',
+    tools: 'Preparando ferramentas…',
+  };
+  const STEP_ORDER = ['backend', 'db', 'tools', 'llm'];
+
+  const startTime = Date.now();
+  let pollTimer = null;
+  let safetyTimer = null;
+  let finished = false;
+  let userOverride = false; // "Continuar mesmo assim" ignora o tempo mínimo
+
+  function apiBase() {
+    return (window.HermesState && window.HermesState.API_BASE) || 'http://localhost:8000';
+  }
+
+  function setLabel(text) {
+    if (introLabel) introLabel.textContent = text;
+  }
+
+  function currentStepLabel(prereqs) {
+    for (const key of STEP_ORDER) {
+      if (prereqs[key] && prereqs[key] !== 'ok') {
+        return STEP_LABELS[key] || 'Iniciando Hermes...';
+      }
+    }
+    return null;
+  }
+
+  function allOk(prereqs) {
+    return STEP_ORDER.every((key) => prereqs[key] === 'ok');
+  }
+
+  function hasFailure(prereqs) {
+    return Object.values(prereqs).some((v) => v === 'error' || v === 'unavailable');
+  }
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
+  }
+
+  function revealApp() {
+    if (finished) return;
+    finished = true;
+    stopPolling();
     explode();
     setTimeout(() => {
       introEl.classList.add('fade-out');
@@ -96,8 +150,77 @@
     }, 900);
   }
 
-  introEl.addEventListener('click', finishIntro);
-  setTimeout(finishIntro, 3200);
+  function showErrorActions(prereqs) {
+    setLabel('Não foi possível concluir a inicialização. Verifique o terminal do backend.');
+    retryBtn.style.display = 'inline-flex';
+    continueBtn.style.display = 'inline-flex';
+  }
+
+  function hideErrorActions() {
+    retryBtn.style.display = 'none';
+    continueBtn.style.display = 'none';
+  }
+
+  retryBtn.addEventListener('click', () => window.location.reload());
+  continueBtn.addEventListener('click', () => {
+    userOverride = true; // sobrepõe o tempo mínimo de 3s, conforme spec
+    revealApp();
+  });
+
+  async function pollPrereqs() {
+    if (finished) return;
+    let prereqs;
+    try {
+      const res = await fetch(`${apiBase()}/system/prereqs`);
+      if (!res.ok) throw new Error('status ' + res.status);
+      prereqs = await res.json();
+    } catch (err) {
+      // Backend ainda nem respondeu — continua tentando, sem tratar como
+      // falha definitiva (pode só estar subindo).
+      setLabel('Conectando ao núcleo…');
+      return;
+    }
+
+    const elapsed = Date.now() - startTime;
+    const minTimeReached = elapsed >= MIN_SPLASH_MS;
+    const ready = allOk(prereqs);
+
+    if (hasFailure(prereqs) && !ready) {
+      showErrorActions(prereqs);
+      return;
+    }
+    hideErrorActions();
+
+    if (ready && minTimeReached) {
+      revealApp();
+      return;
+    }
+
+    if (ready && !minTimeReached) {
+      setLabel('Tudo pronto, iniciando interface…');
+      return;
+    }
+
+    // Ainda faltam pré-requisitos: mostra a etapa atual.
+    const stepLabel = currentStepLabel(prereqs);
+    setLabel(stepLabel || 'Iniciando Hermes...');
+  }
+
+  pollTimer = setInterval(pollPrereqs, POLL_INTERVAL_MS);
+  pollPrereqs();
+
+  // Fallback de segurança: nunca deixa a splash travada para sempre,
+  // independente do tempo mínimo de 3s.
+  safetyTimer = setTimeout(() => {
+    if (finished) return;
+    setLabel('Timeout – verifique o terminal.');
+    retryBtn.style.display = 'inline-flex';
+    continueBtn.style.display = 'inline-flex';
+  }, SAFETY_TIMEOUT_MS);
+
+  // Clique na splash (fora dos botões de ação) não força mais a entrada:
+  // a revelação agora depende dos pré-requisitos reais + tempo mínimo,
+  // exceto quando o usuário aciona "Continuar mesmo assim" explicitamente.
 
   /* ---------- Mini esfera da sidebar ---------- */
   const miniCanvas = document.getElementById('mini-sphere-canvas');

@@ -187,3 +187,12 @@
   #settings-title{display:none;}
   #settings-nav{flex-direction:row;}
 }
+
+.hidden{display:none !important;}
+
+#engineer-mode-details code{
+  font-family:var(--font-mono);font-size:11.5px;
+  background:var(--bg-elevated);padding:2px 6px;border-radius:4px;
+  color:var(--text-hi);
+}
+#engineer-mode-details a{color:var(--purple);}

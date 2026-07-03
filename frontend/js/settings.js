@@ -104,6 +104,10 @@
       // Armazenamento (RAM)
       memorySlider.value = profile.ram_limit_gb;
       memoryValue.textContent = profile.ram_limit_gb + ' GB';
+
+      // Modo engenheiro
+      engineerModeToggle.checked = !!profile.engineer_mode_enabled;
+      applyEngineerModeVisibility(!!profile.engineer_mode_enabled);
     } catch (err) {
       console.error('[Hermes] Erro ao carregar perfil nas configurações:', err);
     }
@@ -207,6 +211,60 @@
       patchProfile({ ram_limit_gb: value });
     }, 500);
   });
+
+  /* ---------- Modo engenheiro (avançado) ---------- */
+  const engineerModeToggle = document.getElementById('engineer-mode-toggle');
+  const engineerModeDetails = document.getElementById('engineer-mode-details');
+  const engineerDownloadLink = document.getElementById('engineer-download-link');
+  const engineerInstallDir = document.getElementById('engineer-install-dir');
+  const engineerChip = document.getElementById('mode-engineer');
+
+  let engineerInfoLoaded = false;
+  async function loadEngineerInfo() {
+    if (engineerInfoLoaded) return;
+    try {
+      const res = await fetch(`${API()}/system/engineer-info`);
+      if (!res.ok) throw new Error('Falha ao consultar engineer-info');
+      const info = await res.json();
+      engineerDownloadLink.textContent = info.download_url;
+      engineerDownloadLink.href = info.download_url;
+      engineerInstallDir.textContent = info.install_dir;
+      engineerInfoLoaded = true;
+    } catch (err) {
+      console.error('[Hermes] Erro ao carregar informações do modo engenheiro:', err);
+      engineerDownloadLink.textContent = 'indisponível no momento';
+    }
+  }
+
+  function applyEngineerModeVisibility(enabled) {
+    engineerChip.style.display = enabled ? '' : 'none';
+    engineerModeDetails.classList.toggle('hidden', !enabled);
+    if (enabled) loadEngineerInfo();
+    // Se o usuário desligar com o chip ativo selecionado, volta pro padrão.
+    if (!enabled && engineerChip.classList.contains('active')) {
+      engineerChip.classList.remove('active');
+    }
+  }
+
+  engineerModeToggle.addEventListener('change', () => {
+    const enabled = engineerModeToggle.checked;
+    applyEngineerModeVisibility(enabled);
+    patchProfile({ engineer_mode_enabled: enabled });
+  });
+
+  // Aplica a visibilidade do chip assim que o app carrega, sem esperar o
+  // usuário abrir o modal de configurações.
+  (async () => {
+    try {
+      const res = await fetch(`${API()}/profile/`);
+      if (!res.ok) return;
+      const profile = await res.json();
+      engineerModeToggle.checked = !!profile.engineer_mode_enabled;
+      applyEngineerModeVisibility(!!profile.engineer_mode_enabled);
+    } catch (err) {
+      console.error('[Hermes] Erro ao pré-carregar estado do modo engenheiro:', err);
+    }
+  })();
 
   /* ---------- Medidor de RAM/CPU em tempo real ---------- */
   const RESOURCE_POLL_INTERVAL_MS = 5000;

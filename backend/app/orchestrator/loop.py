@@ -112,6 +112,11 @@ class AgentLoop:
             analyst = AnalystOrchestrator(llm_client=self.llm, max_iterations=self.analyst_max_iterations)
             return analyst.run(messages=conv, project_id=project_id, chat_id=chat_id)
 
+        # Modo engenheiro: usa o modelo local maior (opcional), se
+        # configurado; caso contrário, o LLMClient já faz fallback para o
+        # modelo padrão internamente (ver LLMClient._resolve_model).
+        llm_model = "engineer" if mode == "engineer" else "default"
+
         # Loop principal
         iteration = 0
         while iteration < self.max_iterations:
@@ -122,6 +127,7 @@ class AgentLoop:
                     messages=conv,
                     max_tokens=1024,
                     temperature=0.3,
+                    model=llm_model,
                     # Passar tools se o servidor suportar function calling
                     # Por enquanto, vamos instruir o LLM a retornar JSON
                 )
@@ -180,8 +186,30 @@ class AgentLoop:
         chat_id: Optional[str] = None,
         mode: Optional[str] = None,
         agent_type: Optional[str] = None,
+        show_thinking: bool = False,
     ) -> AsyncIterator[Dict[str, str]]:
+        """Além dos eventos "token"/"system" já existentes, quando
+        show_thinking=True este gerador também emite eventos
+        {"event": "thinking", "data": "<narrativa em linguagem natural>"}
+        para cada etapa interna relevante (decomposição, tool calls,
+        seleção de agente, etc.), narrando em tempo real o que hoje só ia
+        para os logs JSON. É só narrativa — nunca é concatenada à resposta
+        final do Hermes.
+        """
         conv = self._prepare_conversation(messages, project_id, chat_id, mode)
+
+        def thought(text: str):
+            return {"event": "thinking", "data": text}
+
+        if show_thinking:
+            if mode == "engineer":
+                yield thought("Usando o modo engenheiro (modelo local maior)…")
+            elif mode == "analyst":
+                yield thought("Ativando o modo analista: decomposição, múltiplos candidatos e verificação rigorosa…")
+            elif mode:
+                yield thought(f"Selecionando o agente adequado para o modo \"{mode}\"…")
+            else:
+                yield thought("Selecionando o agente adequado para a mensagem…")
 
         # Aviso único de recursos sob pressão por chamada (evita repetir o
         # aviso a cada iteração do loop caso a pressão persista).
@@ -189,6 +217,8 @@ class AgentLoop:
         if get_monitor().is_under_pressure():
             pressure_warned = True
             yield {"event": "system", "data": RESOURCE_PRESSURE_MESSAGE}
+            if show_thinking:
+                yield thought("Recursos (RAM/CPU) sob pressão — tools pesadas podem ser pausadas.")
 
         # Modo Analista: o processo de decomposição/múltiplos candidatos/juiz
         # roda por dentro de várias iterações e só produz o texto final ao
@@ -196,10 +226,21 @@ class AgentLoop:
         # a rota /chat/stream funcional mesmo assim, emitindo a resposta
         # final como um único evento.
         if mode == "analyst":
+            if show_thinking:
+                yield thought("Decompondo o problema em subtarefas…")
+                yield thought("Gerando soluções candidatas e aplicando o juiz interno…")
+                yield thought("Verificando resultados com as tools disponíveis…")
             analyst = AnalystOrchestrator(llm_client=self.llm, max_iterations=self.analyst_max_iterations)
             final_text = analyst.run(messages=conv, project_id=project_id, chat_id=chat_id)
+            if show_thinking:
+                yield thought("Escolhendo a melhor abordagem entre os candidatos avaliados…")
             yield {"event": "token", "data": final_text}
             return
+
+        # Modo engenheiro: usa o modelo local maior (opcional), se
+        # configurado; caso contrário, o LLMClient já faz fallback para o
+        # modelo padrão internamente (ver LLMClient._resolve_model).
+        llm_model = "engineer" if mode == "engineer" else "default"
 
         iteration = 0
         while iteration < self.max_iterations:
@@ -209,12 +250,18 @@ class AgentLoop:
             if not pressure_warned and get_monitor().is_under_pressure():
                 pressure_warned = True
                 yield {"event": "system", "data": RESOURCE_PRESSURE_MESSAGE}
+                if show_thinking:
+                    yield thought("Recursos (RAM/CPU) sob pressão — tools pesadas podem ser pausadas.")
+
+            if show_thinking and iteration > 1:
+                yield thought(f"Iniciando iteração {iteration} do raciocínio…")
 
             try:
                 token_iter = self.llm.generate_stream(
                     messages=conv,
                     max_tokens=1024,
                     temperature=0.3,
+                    model=llm_model,
                 )
             except Exception as e:
                 logger.error(f"Erro no LLM (stream): {e}")
@@ -255,7 +302,14 @@ class AgentLoop:
                 if "tool" in data and "parameters" in data:
                     tool_name = data["tool"]
                     params = data["parameters"]
+                    if show_thinking:
+                        yield thought(f"Executando a ferramenta \"{tool_name}\"…")
                     result: ToolResult = self._resolve_tool_result(tool_name, params)
+                    if show_thinking:
+                        yield thought(
+                            f"Resultado de \"{tool_name}\": sucesso." if result.success
+                            else f"Resultado de \"{tool_name}\": falhou ({result.error})."
+                        )
                     conv.append({"role": "assistant", "content": response})
                     conv.append({
                         "role": "user",

@@ -25,6 +25,8 @@ class ProfileOut(BaseModel):
     language: str
     ram_limit_gb: int
     push_on_response_done: bool
+    show_thinking: bool
+    engineer_mode_enabled: bool
 
 
 class ProfileUpdate(BaseModel):
@@ -43,6 +45,8 @@ class ProfileUpdate(BaseModel):
     language: Optional[str] = None
     ram_limit_gb: Optional[int] = None
     push_on_response_done: Optional[bool] = None
+    show_thinking: Optional[bool] = None
+    engineer_mode_enabled: Optional[bool] = None
 
 
 def _row_to_profile(row) -> dict:
@@ -62,6 +66,8 @@ def _row_to_profile(row) -> dict:
         "language": row["language"],
         "ram_limit_gb": row["ram_limit_gb"],
         "push_on_response_done": bool(row["push_on_response_done"]),
+        "show_thinking": bool(row["show_thinking"]),
+        "engineer_mode_enabled": bool(row["engineer_mode_enabled"]),
     }
 
 
@@ -104,7 +110,7 @@ def update_profile(payload: ProfileUpdate):
             cur.execute("SELECT * FROM user_profile WHERE id = 1")
             return _row_to_profile(cur.fetchone())
 
-        for k in ("use_saved_memory", "push_on_response_done"):
+        for k in ("use_saved_memory", "push_on_response_done", "show_thinking", "engineer_mode_enabled"):
             if k in fields:
                 fields[k] = int(fields[k])
 

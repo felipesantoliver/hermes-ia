@@ -148,9 +148,27 @@ CREATE TABLE IF NOT EXISTS user_profile (
     theme TEXT NOT NULL DEFAULT 'dark',
     language TEXT NOT NULL DEFAULT 'pt-br',
     ram_limit_gb INTEGER NOT NULL DEFAULT 8,
-    push_on_response_done INTEGER NOT NULL DEFAULT 0
+    push_on_response_done INTEGER NOT NULL DEFAULT 0,
+    show_thinking INTEGER NOT NULL DEFAULT 0,
+    engineer_mode_enabled INTEGER NOT NULL DEFAULT 0
 );
 """
+
+
+# Migrações simples e idempotentes para bancos criados antes de uma coluna
+# nova existir (CREATE TABLE IF NOT EXISTS não adiciona colunas em tabelas
+# já existentes). Cada entrada é (tabela, coluna, definição SQL do ALTER).
+_MIGRATIONS = [
+    ("user_profile", "show_thinking", "ALTER TABLE user_profile ADD COLUMN show_thinking INTEGER NOT NULL DEFAULT 0"),
+    ("user_profile", "engineer_mode_enabled", "ALTER TABLE user_profile ADD COLUMN engineer_mode_enabled INTEGER NOT NULL DEFAULT 0"),
+]
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    for table, column, alter_sql in _MIGRATIONS:
+        cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        if column not in cols:
+            conn.execute(alter_sql)
 
 
 def init_db():
@@ -158,6 +176,7 @@ def init_db():
     conn = get_conn()
     try:
         conn.executescript(SCHEMA)
+        _run_migrations(conn)
         conn.commit()
     finally:
         conn.close()

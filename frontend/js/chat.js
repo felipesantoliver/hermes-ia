@@ -105,6 +105,34 @@ function showAnalystIndicator() {
 }
 
 /**
+ * Cria (se ainda não existir) o bloco <details> de "Pensamento do Hermes"
+ * imediatamente ANTES da bolha de resposta passada, e devolve o elemento
+ * <pre> interno para atualização incremental do conteúdo.
+ */
+function createThinkingBlock(bubbleWrap) {
+  let details = bubbleWrap.querySelector('.thinking-block');
+  if (details) return details.querySelector('pre');
+
+  details = document.createElement('details');
+  details.className = 'thinking-block';
+  details.open = true;
+
+  const summary = document.createElement('summary');
+  summary.textContent = 'Pensamento do Hermes';
+
+  const pre = document.createElement('pre');
+
+  details.appendChild(summary);
+  details.appendChild(pre);
+
+  // Insere antes da bolha de resposta (bubbleWrap contém meta + bubble).
+  const bubbleEl = bubbleWrap.querySelector('.bubble');
+  bubbleWrap.insertBefore(details, bubbleEl);
+
+  return pre;
+}
+
+/**
  * Cria (se ainda não existir) a bolha de mensagem do Hermes usada para
  * preencher incrementalmente durante o streaming, e devolve o elemento
  * <div class="bubble"> para atualização de texto.
@@ -134,6 +162,7 @@ function createHermesBubble() {
   msgCol.appendChild(msg);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 
+  bubble._wrap = bubbleWrap; // usado por createThinkingBlock para inserir o bloco antes da bolha
   return bubble;
 }
 
@@ -148,6 +177,8 @@ function createHermesBubble() {
  */
 async function runStreamingChat(chatPayload) {
   let hermesBubble = null;
+  let thinkingPre = null;
+  let thinkingText = '';
   let hermesText = '';
 
   let streamRes;
@@ -196,7 +227,13 @@ async function runStreamingChat(chatPayload) {
         continue;
       }
 
-      if (eventType === 'token' && typeof data.token === 'string') {
+      if (eventType === 'thinking' && typeof data.token === 'string') {
+        if (!hermesBubble) hermesBubble = createHermesBubble();
+        if (!thinkingPre) thinkingPre = createThinkingBlock(hermesBubble._wrap);
+        thinkingText += (thinkingText ? '\n' : '') + data.token;
+        thinkingPre.textContent = thinkingText;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      } else if (eventType === 'token' && typeof data.token === 'string') {
         if (!hermesBubble) hermesBubble = createHermesBubble();
         hermesText += data.token;
         hermesBubble.textContent = hermesText;
@@ -271,6 +308,7 @@ async function sendMessageToBackend(userText, mode, projectId) {
       mode: mode || null,
       project_id: projectId || null,
       chat_id: chatId,
+      show_thinking: !!(window.HermesState && window.HermesState.showThinking),
     };
 
     let hermesReply = null;
@@ -326,10 +364,10 @@ function sendMessage() {
   // Determinar modo ativo
   let mode = null;
   const codeChip = document.getElementById('mode-code');
-  const thinkChip = document.getElementById('mode-think');
+  const engineerChip = document.getElementById('mode-engineer');
   const analystChip = document.getElementById('mode-analyst');
   if (codeChip.classList.contains('active')) mode = 'code';
-  else if (thinkChip.classList.contains('active')) mode = 'think';
+  else if (engineerChip.classList.contains('active')) mode = 'engineer';
   else if (analystChip.classList.contains('active')) mode = 'analyst';
 
   const projectId = window.HermesState.activeProjectId || null;
@@ -480,6 +518,40 @@ sendMessageToBackend = async function(userText, mode, projectId) {
     // Não limpamos preview em caso de erro
   }
 };
+
+// ============ TOGGLE: PENSAMENTO VISÍVEL ============
+// Chip independente (não faz parte do grupo exclusivo code/engineer/analyst).
+// Estado é persistido no perfil (show_thinking) e refletido também no
+// switch equivalente dentro do modal de Perfil (profile.js sincroniza ao
+// carregar o perfil).
+const thinkingToggleChip = document.getElementById('thinking-toggle');
+
+function setShowThinking(enabled, { persist = true } = {}) {
+  window.HermesState.showThinking = !!enabled;
+  thinkingToggleChip.classList.toggle('active', !!enabled);
+  const profileSwitch = document.getElementById('show-thinking-toggle');
+  if (profileSwitch) profileSwitch.checked = !!enabled;
+  if (persist) {
+    fetch(`${window.HermesState.API_BASE}/profile/`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ show_thinking: !!enabled }),
+    }).catch((err) => console.error('[Hermes] Erro ao salvar show_thinking:', err));
+  }
+}
+window.HermesSetShowThinking = setShowThinking;
+
+thinkingToggleChip.addEventListener('click', () => {
+  setShowThinking(!thinkingToggleChip.classList.contains('active'));
+});
+
+// Carrega o estado salvo assim que a página abre.
+fetch(`${window.HermesState.API_BASE}/profile/`)
+  .then((res) => (res.ok ? res.json() : null))
+  .then((profile) => {
+    if (profile) setShowThinking(!!profile.show_thinking, { persist: false });
+  })
+  .catch(() => {});
 
 // Microfone: toast simples
 const micBtn = document.querySelector('.input-icon-btn[title="Microfone"]');

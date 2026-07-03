@@ -64,7 +64,7 @@ input.addEventListener('input', () => {
 });
 
 /* ---------- Chips de modo: apenas um ativo por vez (code / think / analyst) ---------- */
-const MODE_CHIP_IDS = ['mode-code', 'mode-think', 'mode-analyst'];
+const MODE_CHIP_IDS = ['mode-code', 'mode-engineer', 'mode-analyst'];
 MODE_CHIP_IDS.forEach((id) => {
   document.getElementById(id).addEventListener('click', function () {
     const wasActive = this.classList.contains('active');

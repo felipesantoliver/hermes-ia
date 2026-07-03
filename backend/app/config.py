@@ -19,8 +19,15 @@ class Settings:
     LLM_DEFAULT_MODEL: str = "default"  # nome do modelo no servidor (se houver)
 
     # Modo engenheiro (opcional) - V2.1
+    # 100% opt-in: o sistema roda de ponta a ponta sem isso. O usuário liga
+    # explicitamente em Configurações > Armazenamento, ciente do requisito de
+    # hardware extra (VRAM/RAM), e baixa o modelo manualmente para a pasta
+    # que o backend aponta (ENGINEER_MODEL_INSTALL_DIR) — é essa pasta que o
+    # llama-server do "modo engenheiro" precisa apontar/servir.
     ENGINEER_MODEL_BASE_URL: Optional[str] = None  # ex: "http://localhost:8081"
     ENGINEER_MODEL_NAME: str = "engineer"
+    ENGINEER_MODEL_DOWNLOAD_URL: str = "https://huggingface.co/models?search=qwen+gguf"
+    ENGINEER_MODEL_INSTALL_DIR: str = "./models/engineer/"
 
     # SearXNG local (WebSearchTool) - instância self-hosted, não serviço externo
     SEARXNG_BASE_URL: str = "http://localhost:8081"

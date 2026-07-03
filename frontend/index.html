@@ -22,7 +22,11 @@
 <!-- ============ TELA DE INTRODUÇÃO ============ -->
 <div id="intro">
   <canvas id="intro-canvas"></canvas>
-  <div id="intro-label">Iniciando Hermes</div>
+  <div id="intro-label">Iniciando Hermes...</div>
+  <div id="intro-actions">
+    <button id="intro-retry-btn" class="intro-action-btn" style="display:none;">Tentar novamente</button>
+    <button id="intro-continue-btn" class="intro-action-btn" style="display:none;">Continuar mesmo assim</button>
+  </div>
 </div>
 
 <!-- ============ APLICAÇÃO PRINCIPAL ============ -->
@@ -116,13 +120,17 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
               Modo programação
             </div>
-            <div class="mode-chip" id="mode-think">
+            <div class="mode-chip" id="mode-engineer" style="display:none;" title="Usa um modelo local maior (opcional). Exige mais RAM/VRAM — ative em Configurações > Armazenamento.">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9.5 2a5.5 5.5 0 00-3 10.1V15a1 1 0 001 1h5a1 1 0 001-1v-2.9A5.5 5.5 0 009.5 2z" transform="translate(2.5 2)"/><path d="M9 21h6M10 18h4"/></svg>
-              Modo pensador
+              Modo engenheiro
             </div>
             <div class="mode-chip" id="mode-analyst">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M21 21l-4.7-4.7" stroke-linecap="round"/></svg>
               Analista
+            </div>
+            <div class="mode-chip" id="thinking-toggle" title="Mostrar o raciocínio interno do Hermes nas próximas respostas">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9.5 2a5.5 5.5 0 00-3 10.1V15a1 1 0 001 1h5a1 1 0 001-1v-2.9A5.5 5.5 0 009.5 2z" transform="translate(2.5 2)"/><path d="M9 21h6M10 18h4"/></svg>
+              Pensamento
             </div>
           </div>
         </div>
@@ -248,6 +256,32 @@
                 <span id="resource-meter-status">Aguardando dados...</span>
                 <span id="resource-meter-cpu-label">CPU: --%</span>
               </div>
+            </div>
+          </div>
+
+          <div class="settings-group" id="engineer-mode-group">
+            <label class="settings-row-title">Modo engenheiro (avançado)</label>
+            <div class="settings-row">
+              <div>
+                <div class="settings-row-desc">
+                  Liga um chip extra no chat que usa um modelo local <strong>maior</strong>
+                  para raciocínio mais profundo. Totalmente opcional — o Hermes funciona
+                  de ponta a ponta sem isso. <strong>Requer mais RAM/VRAM que o modelo
+                  padrão</strong>; só ative se seu hardware tiver folga.
+                </div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="engineer-mode-toggle">
+                <span class="switch-track"></span>
+              </label>
+            </div>
+            <div id="engineer-mode-details" class="settings-row-desc hidden" style="margin-top:10px;">
+              Baixe o modelo maior e coloque os arquivos na pasta que o Hermes usa para
+              o modo engenheiro (é essa pasta que o app aponta ao subir o núcleo maior):
+              <br><br>
+              Download: <a id="engineer-download-link" href="#" target="_blank" rel="noopener">carregando…</a>
+              <br>
+              Instalar em: <code id="engineer-install-dir">carregando…</code>
             </div>
           </div>
         </div>
@@ -376,6 +410,18 @@
           </div>
           <label class="switch">
             <input type="checkbox" id="memory-toggle" checked>
+            <span class="switch-track"></span>
+          </label>
+        </div>
+
+        <!-- ---------- Pensamento visível ---------- -->
+        <div class="settings-row" id="thinking-row">
+          <div>
+            <div class="settings-row-title">Mostrar pensamento do Hermes</div>
+            <div class="settings-row-desc">Exibe, em um bloco expansível acima da resposta, o raciocínio interno do Hermes enquanto ele responde.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="show-thinking-toggle">
             <span class="switch-track"></span>
           </label>
         </div>
