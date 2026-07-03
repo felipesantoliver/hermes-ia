@@ -5,18 +5,33 @@
 #
 # Prioridade de inclusão (quando o orçamento de tokens aperta):
 #   1. architectural_memory  (decisões arquiteturais)
-#   2. conversation_memory   (resumo conversacional)
-#   3. code_memory           (memória de código)
+#   2. code_rag              (trechos relevantes do projeto)
+#   3. conversation_memory   (resumo conversacional)
+#   4. code_memory           (memória de código)
 
 from typing import Optional, List
 from ..config import settings
 from . import store
+from .code_rag import retrieve  # novo import
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Fração do MAX_CONTEXT_TOKENS reservada para memória injetada.
 # O restante fica para system prompt base, histórico de mensagens e resposta.
 MEMORY_BUDGET_RATIO = 0.25
 
 VALID_SCOPES = {"isolated", "isolated_read_external", "none"}
+
+# Heurística para ativar RAG: palavras-chave técnicas
+RAG_TRIGGER_WORDS = {
+    "def", "class", "import", "from", "return", "if", "else", "for", "while",
+    "try", "except", "raise", "with", "as", "lambda", "yield",
+    "function", "método", "classe", "código", "função", "bug", "refatorar",
+    "refatoração", "otimizar", "performance", "error", "exceção", "teste",
+    "unitário", "integração", "arquivo", ".py", ".js", ".ts", ".c", ".h",
+    ".cpp", ".java", ".go", ".rs", ".rb", ".php",
+}
 
 
 def _approx_tokens(text: str) -> int:
@@ -42,6 +57,30 @@ def _format_code(items: List[dict]) -> List[str]:
         ref = f" ({i['file_ref']})" if i.get("file_ref") else ""
         out.append(f"- [Memória de código]{ref} {i['title']}: {i['content']}")
     return out
+
+
+def _format_rag(results: List[dict]) -> List[str]:
+    """Formata os trechos retornados pelo RAG."""
+    lines = []
+    for r in results:
+        file = r.get("file", "desconhecido")
+        line = r.get("line", 0)
+        code = r.get("code", "").strip()
+        if code:
+            lines.append(f"- [Trecho de código] {file}:{line}\n```\n{code[:500]}\n```")
+    return lines
+
+
+def _should_use_rag(user_message: str) -> bool:
+    """Heurística para decidir se a mensagem é técnica e merece RAG."""
+    if not user_message:
+        return False
+    text = user_message.lower()
+    # Verifica presença de palavras-chave
+    for word in RAG_TRIGGER_WORDS:
+        if word in text:
+            return True
+    return False
 
 
 def _fetch_layers(project_id: Optional[str], chat_id: Optional[str], scope: Optional[str]):
@@ -88,12 +127,18 @@ def _fetch_layers(project_id: Optional[str], chat_id: Optional[str], scope: Opti
     return _format_architectural(arch), _format_conversation(conv), _format_code(code)
 
 
-def build_memory_context(project_id: Optional[str] = None, chat_id: Optional[str] = None) -> str:
+def build_memory_context(
+    project_id: Optional[str] = None,
+    chat_id: Optional[str] = None,
+    user_message: Optional[str] = None,
+) -> str:
     """
     Monta o bloco de texto de memória a ser injetado no system prompt.
     Retorna string vazia se:
       - use_saved_memory=false no perfil (disjuntor geral, sobrepõe tudo), ou
       - não houver nenhuma memória relevante.
+    Agora também inclui RAG se a mensagem do usuário for técnica e o projeto
+    possuir índice.
     """
     if not store.get_use_saved_memory():
         return ""
@@ -105,25 +150,45 @@ def build_memory_context(project_id: Optional[str] = None, chat_id: Optional[str
             scope = "isolated"
 
     arch_lines, conv_lines, code_lines = _fetch_layers(project_id, chat_id, scope)
+    rag_lines = []
 
-    if not arch_lines and not conv_lines and not code_lines:
-        return ""
+    # RAG: se houver mensagem do usuário e projeto, e a heurística ativar
+    if project_id and user_message and _should_use_rag(user_message):
+        try:
+            results = retrieve(project_id, user_message, top_k=4)
+            if results:
+                rag_lines = _format_rag(results)
+                logger.info(f"RAG: {len(rag_lines)} trechos recuperados para projeto {project_id}")
+        except Exception as e:
+            logger.warning(f"Falha no RAG para projeto {project_id}: {e}")
+
+    # Agrupar por prioridade: arch, rag, conv, code
+    groups = [
+        ("Decisões arquiteturais", arch_lines),
+        ("Código relevante do projeto", rag_lines),
+        ("Resumo conversacional", conv_lines),
+        ("Memória de código", code_lines),
+    ]
 
     budget = _memory_budget()
     used = 0
     included: List[str] = []
 
-    # Prioridade: arquitetural > conversacional > código
-    for group in (arch_lines, conv_lines, code_lines):
-        for line in group:
+    for header, lines in groups:
+        if not lines:
+            continue
+        # Adiciona cabeçalho apenas se houver linhas
+        included.append(f"\n{header}:")
+        for line in lines:
             cost = _approx_tokens(line)
             if used + cost > budget:
-                continue
+                # Se estourar, para de adicionar linhas deste grupo e pula para o próximo
+                # (mas mantém o cabeçalho já adicionado)
+                break
             included.append(line)
             used += cost
 
-    if not included:
+    if len(included) <= 1:  # apenas cabeçalhos ou vazio
         return ""
 
-    header = "Memória relevante (prioridade: decisões arquiteturais > resumo conversacional > memória de código):"
-    return header + "\n" + "\n".join(included)
+    return "\n".join(included)

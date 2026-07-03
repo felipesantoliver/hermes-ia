@@ -16,6 +16,17 @@ logger = logging.getLogger(__name__)
 
 RESOURCE_PRESSURE_MESSAGE = "Recursos escassos, resposta pode demorar"
 
+# Nomes de todas as tools disponíveis, exceto web_search (que é condicional)
+DEFAULT_TOOLS = [
+    "read_file",
+    "run_python",
+    "run_shell",
+    "codebase_index",
+    "firmware_check",
+    "bandit_scan",
+    "shellcheck_scan",
+]
+
 
 class AgentLoop:
     def __init__(self, llm_client: LLMClient, max_iterations: int = 6, analyst_max_iterations: int = 12, engineer_max_iterations: int = 4):
@@ -36,6 +47,7 @@ class AgentLoop:
         project_id: Optional[str],
         chat_id: Optional[str],
         mode: Optional[str],
+        enabled_tools: Optional[List[str]] = None,
     ) -> List[Dict[str, str]]:
         conv = messages.copy()
 
@@ -45,10 +57,27 @@ class AgentLoop:
         # e misturar as duas instruções JSON confunde o modelo local.
         sys_msg = next((m for m in conv if m["role"] == "system"), None)
         if mode != "analyst":
-            if sys_msg:
-                sys_msg["content"] += "\n\nVocê tem acesso às seguintes ferramentas. Se precisar executar uma ação, responda com um JSON contendo o nome da tool e seus parâmetros. Caso contrário, responda normalmente."
+            # Determinar quais tools serão listadas
+            if enabled_tools is None:
+                tool_names = [t.name for t in list_tools()]  # todas
             else:
-                sys_msg = {"role": "system", "content": "Você tem acesso a ferramentas. Responda com JSON para usá-las ou texto normal para responder."}
+                tool_names = [t for t in enabled_tools if t in [t.name for t in list_tools()]]
+
+            tools = [get_tool(name) for name in tool_names if get_tool(name)]
+            if tools:
+                tools_desc = "\n".join([f"- {t.name}: {t.description}" for t in tools])
+                tool_instruction = (
+                    "Você tem acesso às seguintes ferramentas. Se precisar executar uma ação, "
+                    "responda com um JSON contendo o nome da tool e seus parâmetros. Caso contrário, "
+                    "responda normalmente.\n\nFerramentas disponíveis:\n" + tools_desc
+                )
+            else:
+                tool_instruction = "Você não tem ferramentas disponíveis para esta conversa."
+
+            if sys_msg:
+                sys_msg["content"] += "\n\n" + tool_instruction
+            else:
+                sys_msg = {"role": "system", "content": tool_instruction}
                 conv.insert(0, sys_msg)
         elif not sys_msg:
             sys_msg = {"role": "system", "content": ""}
@@ -56,8 +85,14 @@ class AgentLoop:
 
         # Injetar memória (arquitetural > conversacional > código), respeitando
         # memory_scope do projeto e o disjuntor use_saved_memory do perfil.
+        # Passamos a mensagem do usuário para ativar RAG, se for o caso.
+        user_message = next((m["content"] for m in reversed(conv) if m["role"] == "user"), None)
         try:
-            memory_block = build_memory_context(project_id=project_id, chat_id=chat_id)
+            memory_block = build_memory_context(
+                project_id=project_id,
+                chat_id=chat_id,
+                user_message=user_message,
+            )
         except Exception as e:
             logger.warning(f"Falha ao montar contexto de memória: {e}")
             memory_block = ""
@@ -71,12 +106,17 @@ class AgentLoop:
     # Compartilhado entre run() e run_stream().
     # ------------------------------------------------------------------
     @staticmethod
-    def _resolve_tool_result(tool_name: str, params: Dict[str, Any]) -> ToolResult:
+    def _resolve_tool_result(tool_name: str, params: Dict[str, Any], enabled_tools: Optional[List[str]] = None) -> ToolResult:
         """Executa a tool normalmente, a menos que seja uma tool pesada e o
         monitor de recursos esteja sinalizando pressão — nesse caso, a
         execução é pausada e o LLM recebe um erro claro em vez do resultado,
         podendo decidir como prosseguir (ex: tentar de novo mais tarde,
-        avisar o usuário)."""
+        avisar o usuário). Também verifica se a tool está habilitada."""
+        if enabled_tools is not None and tool_name not in enabled_tools:
+            return ToolResult(
+                success=False,
+                error=f"Ferramenta '{tool_name}' não está habilitada para esta conversa.",
+            )
         if tool_name in HEAVY_TOOL_NAMES and get_monitor().is_under_pressure():
             return ToolResult(
                 success=False,
@@ -97,6 +137,7 @@ class AgentLoop:
         chat_id: Optional[str] = None,
         mode: Optional[str] = None,
         agent_type: Optional[str] = None,
+        web_search: bool = False,
     ) -> str:
         """
         Executa o loop do agente (modo não-streaming):
@@ -104,7 +145,12 @@ class AgentLoop:
         2. Se o LLM pedir uma tool, executa e adiciona o resultado ao histórico.
         3. Repete até resposta final ou limite de iterações.
         """
-        conv = self._prepare_conversation(messages, project_id, chat_id, mode)
+        # Definir quais tools estão habilitadas
+        enabled_tools = DEFAULT_TOOLS.copy()
+        if web_search:
+            enabled_tools.append("web_search")
+
+        conv = self._prepare_conversation(messages, project_id, chat_id, mode, enabled_tools)
 
         # Modo Analista: processo rigoroso de decomposição, múltiplos
         # candidatos, juiz, verificação por tools e checklists de domínio.
@@ -130,8 +176,6 @@ class AgentLoop:
                     max_tokens=1024,
                     temperature=0.3,
                     model=llm_model,
-                    # Passar tools se o servidor suportar function calling
-                    # Por enquanto, vamos instruir o LLM a retornar JSON
                 )
             except Exception as e:
                 logger.error(f"Erro no LLM: {e}")
@@ -143,7 +187,7 @@ class AgentLoop:
                 if "tool" in data and "parameters" in data:
                     tool_name = data["tool"]
                     params = data["parameters"]
-                    result: ToolResult = self._resolve_tool_result(tool_name, params)
+                    result: ToolResult = self._resolve_tool_result(tool_name, params, enabled_tools)
                     # Adicionar resultado ao histórico
                     conv.append({"role": "assistant", "content": response})
                     conv.append({
@@ -153,7 +197,6 @@ class AgentLoop:
                     continue  # volta ao início do loop para nova iteração
             except json.JSONDecodeError:
                 # Não é JSON, resposta final
-                # Registrar log
                 self._log_conversation(chat_id, project_id, conv, response)
                 return response
 
@@ -189,6 +232,7 @@ class AgentLoop:
         mode: Optional[str] = None,
         agent_type: Optional[str] = None,
         show_thinking: bool = False,
+        web_search: bool = False,
     ) -> AsyncIterator[Dict[str, str]]:
         """Além dos eventos "token"/"system" já existentes, quando
         show_thinking=True este gerador também emite eventos
@@ -198,7 +242,12 @@ class AgentLoop:
         para os logs JSON. É só narrativa — nunca é concatenada à resposta
         final do Hermes.
         """
-        conv = self._prepare_conversation(messages, project_id, chat_id, mode)
+        # Definir quais tools estão habilitadas
+        enabled_tools = DEFAULT_TOOLS.copy()
+        if web_search:
+            enabled_tools.append("web_search")
+
+        conv = self._prepare_conversation(messages, project_id, chat_id, mode, enabled_tools)
 
         def thought(text: str):
             return {"event": "thinking", "data": text}
@@ -307,7 +356,7 @@ class AgentLoop:
                     params = data["parameters"]
                     if show_thinking:
                         yield thought(f"Executando a ferramenta \"{tool_name}\"…")
-                    result: ToolResult = self._resolve_tool_result(tool_name, params)
+                    result: ToolResult = self._resolve_tool_result(tool_name, params, enabled_tools)
                     if show_thinking:
                         yield thought(
                             f"Resultado de \"{tool_name}\": sucesso." if result.success

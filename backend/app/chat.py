@@ -24,6 +24,7 @@ class ChatRequest(BaseModel):
     project_id: Optional[str] = None
     chat_id: str                        # obrigatório, pois já criamos antes
     show_thinking: bool = False         # ativa o streaming do raciocínio interno ("thinking")
+    web_search: bool = False            # ativa a ferramenta de busca web
 
 
 class ChatResponse(BaseModel):
@@ -118,6 +119,7 @@ async def _build_chat_context(payload: ChatRequest) -> dict:
         "effective_mode": effective_mode,
         "agent_type": agent_type,
         "project_id": payload.project_id,
+        "web_search": payload.web_search,
     }
 
 
@@ -146,6 +148,7 @@ async def chat_endpoint(
         chat_id=payload.chat_id,
         mode=ctx["effective_mode"],
         agent_type=ctx["agent_type"],
+        web_search=ctx["web_search"],
     )
 
     _save_hermes_reply(payload.chat_id, result)
@@ -190,6 +193,7 @@ async def _sse_event_stream(payload: ChatRequest, llm: LLMClient) -> AsyncIterat
             mode=ctx["effective_mode"],
             agent_type=ctx["agent_type"],
             show_thinking=payload.show_thinking,
+            web_search=ctx["web_search"],
         ):
             event_type = item.get("event", "token")
             data = item.get("data", "")

@@ -76,3 +76,9 @@ class WebSearchTool(Tool):
         ]
 
         return ToolResult(success=True, data={"results": results, "result_count": len(results)})
+
+    # Preparação para futura busca em documentação local (V2.4)
+    @staticmethod
+    def search_local(query: str) -> Dict[str, Any]:
+        """Placeholder para busca em índices locais (PDFs, datasheets)."""
+        return {"results": [], "message": "Busca local ainda não implementada"}

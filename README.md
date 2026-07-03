@@ -3,7 +3,7 @@
 **Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
 O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
-> **Status:** ✅ MVP concluído | ✅ V1 concluída | 🟡 V2 em desenvolvimento (Modo Engenheiro implementado)
+> **Status:** ✅ MVP concluído | ✅ V1 concluída | 🟡 V2 em desenvolvimento (Modo Engenheiro implementado, RAG avançado, pesquisa web)
 
 ---
 
@@ -29,11 +29,13 @@ O Hermes é um ambiente onde **projetos são entidades vivas**, decisões arquit
 
 - **LLM local** (Qwen 7B–8B quantizado)
 - **Ferramentas executáveis** em sandbox (Python, shell, compilação, análise estática…)
-- **Memória estruturada** por projeto (3 camadas: arquitetural, conversacional, código)
+- **Memória estruturada** por projeto (3 camadas + RAG semântico para código)
 - **Agentes lógicos** configuráveis (Desenvolvedor, Arquiteto, Firmware, Revisor)
 - **Modo Analista** – verificação rigorosa multi-etapa com o mesmo modelo
 - **Modo Engenheiro** – segundo modelo local maior, opcional, para raciocínio mais profundo
 - **Streaming SSE** e **Pensamento Visível** para total transparência
+- **Pesquisa web** integrada (via SearXNG local)
+- **RAG avançado** para código (busca semântica em funções/classes do projeto)
 
 > O objetivo não é gerar respostas – é **resolver problemas de engenharia de forma contínua e incremental**.
 
@@ -67,6 +69,7 @@ text
 - Agent Loop com suporte a tools e iterações múltiplas
 - Monitor de recursos em background (RAM/CPU)
 - Log de auditoria de todas as execuções de ferramentas
+- **RAG para código**: busca semântica em funções/classes indexadas via FAISS, ativada automaticamente para perguntas técnicas
 
 ### Frontend (SPA vanilla)
 - HTML/CSS/JS puro, sem frameworks; Three.js para visualizações 3D
@@ -74,6 +77,7 @@ text
 - Sidebar com chats fixados, recentes, navegação e mini-esfera 3D reativa
 - Consumo de eventos SSE (`token`, `thinking`, `system`, `error`, `done`)
 - Estado global compartilhado (`HermesState`) e modais auto-save
+- **Chip "Web"** para ativar/desativar a pesquisa web na conversa atual
 
 ### LLM Core (Qwen 7B–8B)
 - Modelo local quantizado (Q4–Q5) executado via llama.cpp
@@ -86,7 +90,7 @@ text
 
 ### Orquestrador e Agent Loop
 O `AgentLoop` (arquivo `loop.py`):
-1. Prepara o prompt (sistema + tools + memória)
+1. Prepara o prompt (sistema + tools + memória + RAG)
 2. Chama o LLM (streaming ou não)
 3. Se a resposta for uma chamada de ferramenta (JSON), executa e realimenta o resultado
 4. Itera até obter resposta final ou atingir o limite
@@ -114,17 +118,20 @@ Executadas em sandbox com restrições rigorosas:
 - **RunPythonTool**: sem rede, limite de 128 MB RAM, timeout configurável
 - **RunShellTool**: allowlist de comandos seguros, bloqueio de metacaracteres
 - **ReadFileTool**: leitura segura dentro do projeto, prevenção de path traversal
-- **WebSearchTool**: integração com SearXNG local
+- **WebSearchTool**: integração com SearXNG local (ativável via chip "Web")
 - **CodebaseIndexTool**: indexação FAISS de funções/classes (preparação RAG)
 - **FirmwareTool**: detecção e compilação de projetos C/C++ com PlatformIO
 - **BanditTool / ShellCheckTool**: análise estática de segurança
 - **Log de auditoria**: todas as execuções registradas (`tool_audit.jsonl`)
 
-### Memória
-Organizada em 3 camadas com prioridade de inclusão no contexto:
+### Memória e RAG
+Organizada em 4 camadas com prioridade de inclusão no contexto:
 1. **Arquitetural** – decisões de design, padrões
-2. **Conversacional** – resumos compactos de conversas anteriores
-3. **Código** – notas sobre arquivos e trechos
+2. **RAG (Código relevante)** – trechos de código do projeto recuperados por similaridade semântica
+3. **Conversacional** – resumos compactos de conversas anteriores
+4. **Código** – notas sobre arquivos e trechos (menos prioritário)
+
+O RAG é ativado automaticamente quando a mensagem do usuário contém termos técnicos (`def`, `class`, `import`, nomes de arquivo, etc.) e o projeto possui um índice FAISS. Se o índice não existir, ele é gerado sob demanda na primeira consulta.
 
 Escopos configuráveis por projeto: `isolated`, `isolated_read_external` ou `none`.  
 O usuário pode desabilitar a memória globalmente.
@@ -145,7 +152,8 @@ Ativado manualmente ou automaticamente para contextos de alto rigor. Processo:
 - **Fallback**: se o modelo engenheiro não estiver configurado ou falhar, o sistema volta automaticamente ao modelo padrão, com log.
 
 ### Pensamento Visível
-Quando ativado, o backend emite eventos `thinking` (SSE) com a narrativa do raciocínio. O frontend exibe isso em um bloco expansível acima da resposta final.
+Quando o modo Analista está ativo, o backend emite eventos `thinking` (SSE) com a narrativa do raciocínio. O frontend exibe isso em um bloco expansível acima da resposta final.  
+*(O antigo chip "Pensamento" foi removido; a funcionalidade foi incorporada ao Modo Analista.)*
 
 ### Streaming SSE
 Endpoint `/chat/stream` emite eventos: `token`, `thinking`, `system`, `error`, `done`.  
@@ -156,7 +164,7 @@ Thread em background que mede RAM/CPU a cada 5s.
 Quando o uso de RAM ultrapassa 80% do limite configurado, o sistema entra em `under_pressure` e pausa ferramentas pesadas automaticamente.
 
 ### Perfil e Configurações
-- **Perfil**: nome, apelido do Hermes, personalidade, filtro de conteúdo, memória, pensamento visível, etc.
+- **Perfil**: nome, apelido do Hermes, personalidade, filtro de conteúdo, memória, etc.
 - **Configurações**: tema, idioma, notificações, limite de RAM, modo engenheiro (com campos para path/URL e teste), ações destrutivas.
 
 ---
@@ -165,47 +173,58 @@ Quando o uso de RAM ultrapassa 80% do limite configurado, o sistema entra em `un
 hermes-ai/
 ├── backend/
 │ ├── app/
-│ │ ├── main.py # FastAPI – ponto de entrada
-│ │ ├── config.py # Configurações globais
-│ │ ├── db.py # SQLite + migrações
-│ │ ├── llm.py # Cliente HTTP para llama.cpp + suporte a modelo embarcado
-│ │ ├── monitor.py # Monitor de RAM/CPU
-│ │ ├── chat.py # Rotas /chat (stream e não-stream)
-│ │ ├── chats.py # CRUD de chats
-│ │ ├── projects.py # CRUD de projetos e arquivos
-│ │ ├── files.py # Upload/download de arquivos
-│ │ ├── profile.py # Perfil do usuário (inclui campos do modo engenheiro)
-│ │ ├── profile_prompt.py # System prompt a partir do perfil
-│ │ ├── system.py # Status do sistema, pré-requisitos e teste do modo engenheiro
-│ │ ├── orchestrator/ # Núcleo da lógica do agente
-│ │ │ ├── loop.py # AgentLoop principal
-│ │ │ ├── analyst.py # Modo Analista (com suporte a engenheiro)
-│ │ │ ├── router.py # Classificador híbrido
-│ │ │ └── context_builder.py # Montagem do contexto/memória
-│ │ ├── memory/ # Acesso à memória (3 camadas)
+│ │ ├── main.py
+│ │ ├── config.py
+│ │ ├── db.py
+│ │ ├── llm.py
+│ │ ├── monitor.py
+│ │ ├── chat.py
+│ │ ├── chats.py
+│ │ ├── projects.py
+│ │ ├── files.py
+│ │ ├── profile.py
+│ │ ├── profile_prompt.py
+│ │ ├── system.py
+│ │ ├── orchestrator/
+│ │ │ ├── loop.py
+│ │ │ ├── analyst.py
+│ │ │ ├── router.py
+│ │ │ └── context_builder.py
+│ │ ├── memory/
 │ │ │ ├── store.py
+│ │ │ ├── code_rag.py # NOVO: RAG para código
 │ │ │ └── init.py
-│ │ ├── tools/ # Ferramentas executáveis
-│ │ │ ├── base.py # Classe base Tool + ToolResult
-│ │ │ ├── registry.py # Registro e schema OpenAI
+│ │ ├── tools/
+│ │ │ ├── base.py
+│ │ │ ├── registry.py
 │ │ │ ├── read_file.py
-│ │ │ ├── run_python.py # Sandbox Python
-│ │ │ ├── run_shell.py # Sandbox shell
-│ │ │ ├── web_search.py # SearXNG
-│ │ │ ├── codebase_index.py # Indexação FAISS
-│ │ │ ├── firmware.py # PlatformIO
-│ │ │ ├── security_static.py # Bandit/ShellCheck
-│ │ │ ├── audit.py # Log de auditoria
-│ │ │ └── indexer.py # Extração de unidades de código
-│ │ ├── prompts/ # System prompts (ex: analista)
-│ │ └── knowledge/checklists/ # Checklists de domínio (JSON)
-│ ├── data/ # Dados persistentes (SQLite, logs, índices)
-│ ├── scripts/ # Scripts de teste e validação
+│ │ │ ├── run_python.py
+│ │ │ ├── run_shell.py
+│ │ │ ├── web_search.py
+│ │ │ ├── codebase_index.py
+│ │ │ ├── firmware.py
+│ │ │ ├── security_static.py
+│ │ │ ├── audit.py
+│ │ │ └── indexer.py
+│ │ ├── prompts/
+│ │ └── knowledge/checklists/
+│ ├── data/
+│ ├── scripts/
+│ │ ├── test_analyst_mode.py
+│ │ ├── test_engineer_mode.py
+│ │ ├── test_llm.py
+│ │ ├── test_loop.py
+│ │ ├── test_memory_scope.py
+│ │ ├── test_profile.py
+│ │ ├── test_streaming.py
+│ │ ├── test_stress_memory.py
+│ │ ├── test_thinking_visible.py
+│ │ └── test_code_rag.py # NOVO
 │ ├── requirements.txt
 │ └── README.md
 ├── frontend/
-│ ├── index.html # Estrutura da SPA (inclui painel "Modelos" nas configurações)
-│ ├── css/ # Estilos modulares
+│ ├── index.html
+│ ├── css/
 │ │ ├── theme.css
 │ │ ├── layout.css
 │ │ ├── chat.css
@@ -213,17 +232,17 @@ hermes-ai/
 │ │ ├── gallery.css
 │ │ ├── settings.css
 │ │ └── profile.css
-│ └── js/ # Módulos JavaScript
-│ ├── state.js # Estado global
-│ ├── ui.js # UI (sidebar, tema, input)
-│ ├── chat.js # Lógica do chat e streaming
-│ ├── chats.js # Sidebar e lista de chats
-│ ├── projects.js # Gestão de projetos
-│ ├── gallery.js # Galeria de arquivos
-│ ├── settings.js # Configurações (inclui painel "Modelos")
-│ ├── profile.js # Perfil do usuário
-│ ├── notifications.js # Notificações push
-│ └── spheres.js # Three.js (intro e mini-esfera)
+│ └── js/
+│ ├── state.js
+│ ├── ui.js
+│ ├── chat.js
+│ ├── chats.js
+│ ├── projects.js
+│ ├── gallery.js
+│ ├── settings.js
+│ ├── profile.js
+│ ├── notifications.js
+│ └── spheres.js
 ├── .gitignore
 └── README.md
 
@@ -277,12 +296,16 @@ cd frontend
 python -m http.server 3000
 Acesse http://localhost:3000 no navegador.
 
-### Configuração do Modo Engenheiro (opcional)
-1. Baixe um modelo maior (ex: Qwen 14B ou 32B) e coloque em `backend/models/engineer/` ou outro diretório.
-2. No frontend, acesse Configurações > Modelos.
-3. Preencha o caminho do arquivo `.gguf` ou a URL do servidor llama.cpp dedicado.
-4. Clique em "Testar conexão" para verificar.
-5. Ative o chip "Engenheiro" na barra de mensagens para usar o modelo maior.
+Configuração do Modo Engenheiro (opcional)
+Baixe um modelo maior (ex: Qwen 14B ou 32B) e coloque em backend/models/engineer/ ou outro diretório.
+
+No frontend, acesse Configurações > Modelos.
+
+Preencha o caminho do arquivo .gguf ou a URL do servidor llama.cpp dedicado.
+
+Clique em "Testar conexão" para verificar.
+
+Ative o chip "Engenheiro" na barra de mensagens para usar o modelo maior.
 
 Funcionalidades
 Funcionalidade	Descrição
@@ -290,26 +313,21 @@ Funcionalidade	Descrição
 📁 Projetos	CRUD completo; cada projeto possui instruções, persona, arquivos, escopo de memória e chats associados.
 🗂 Sidebar	Chats fixados, recentes, busca, menu de contexto (fixar, renomear, mover, arquivar, excluir).
 🖼 Galeria	Visualização em grid de todos os arquivos (usuário e sistema) com download/exclusão.
-👤 Perfil	Personalização do tom do Hermes (personalidade, entusiasmo, emojis, memória, pensamento visível).
+👤 Perfil	Personalização do tom do Hermes (personalidade, entusiasmo, emojis, memória, etc.).
 ⚙️ Configurações	Tema, idioma, notificações, limite de RAM, modo engenheiro (configuração e teste), ações destrutivas.
 🔍 Modo Analista	Verificação rigorosa com decomposição, múltiplos candidatos, juiz, ferramentas e checklists.
-🧠 Pensamento Visível	Exibição do raciocínio interno em tempo real (bloco expansível).
+🧠 Pensamento Visível	Exibição do raciocínio interno em tempo real (bloco expansível) – ativo no Modo Analista.
 🚀 Modo Engenheiro	Modelo local maior opcional para tarefas complexas, com integração ao modo Analista.
 🔧 Ferramentas	Execução segura de Python, shell, leitura de arquivos, busca, indexação, análise estática, compilação.
+🌐 Pesquisa Web	Ativação por chip "Web" – usa SearXNG local para enriquecer respostas com informações da internet.
 📊 Monitor	Medição contínua de RAM/CPU com pausa automática de ferramentas pesadas.
 📝 Logs	Auditoria de todas as execuções de tools, logs de conversa e do modo analista (JSONL).
 Roadmap
-✅ MVP (concluído)
+✅ MVP (concluído) – Backend FastAPI, SQLite, SPA vanilla, integração com LLM local, Agent Loop básico, memória em 3 camadas, classificador heurístico.
 
-Backend FastAPI, SQLite, SPA vanilla, integração com LLM local, Agent Loop básico, memória em 3 camadas, classificador heurístico.
+✅ V1 (concluída) – Modo Analista completo, streaming SSE, Pensamento Visível, classificador híbrido, monitor de recursos, notificações push, sandbox reforçado, testes automatizados.
 
-✅ V1 (concluída)
-
-Modo Analista completo, streaming SSE, Pensamento Visível, classificador híbrido, monitor de recursos, notificações push, sandbox reforçado, testes automatizados.
-
-🟡 V2 (em desenvolvimento)
-
-Modo Engenheiro (implementado), RAG avançado (busca semântica com FAISS), planejamento multi-step, especialização por domínio (Android, BLE…), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
+🟡 V2 (em desenvolvimento) – Modo Engenheiro (implementado), RAG avançado (implementado), pesquisa web (implementada), planejamento multi-step, especialização por domínio (Android, BLE…), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
 
 Princípios Fundamentais
 Local-first – Nada depende de nuvem; dados e processamento permanecem na máquina do usuário.

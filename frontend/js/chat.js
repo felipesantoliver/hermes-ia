@@ -308,7 +308,9 @@ async function sendMessageToBackend(userText, mode, projectId) {
       mode: mode || null,
       project_id: projectId || null,
       chat_id: chatId,
-      show_thinking: !!(window.HermesState && window.HermesState.showThinking),
+      // Pensamento visível: ativado apenas no modo analista (ou se o usuário quiser, mas removemos o toggle)
+      show_thinking: mode === 'analyst',
+      web_search: !!window.HermesState.webSearchEnabled,
     };
 
     let hermesReply = null;
@@ -518,40 +520,6 @@ sendMessageToBackend = async function(userText, mode, projectId) {
     // Não limpamos preview em caso de erro
   }
 };
-
-// ============ TOGGLE: PENSAMENTO VISÍVEL ============
-// Chip independente (não faz parte do grupo exclusivo code/engineer/analyst).
-// Estado é persistido no perfil (show_thinking) e refletido também no
-// switch equivalente dentro do modal de Perfil (profile.js sincroniza ao
-// carregar o perfil).
-const thinkingToggleChip = document.getElementById('thinking-toggle');
-
-function setShowThinking(enabled, { persist = true } = {}) {
-  window.HermesState.showThinking = !!enabled;
-  thinkingToggleChip.classList.toggle('active', !!enabled);
-  const profileSwitch = document.getElementById('show-thinking-toggle');
-  if (profileSwitch) profileSwitch.checked = !!enabled;
-  if (persist) {
-    fetch(`${window.HermesState.API_BASE}/profile/`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ show_thinking: !!enabled }),
-    }).catch((err) => console.error('[Hermes] Erro ao salvar show_thinking:', err));
-  }
-}
-window.HermesSetShowThinking = setShowThinking;
-
-thinkingToggleChip.addEventListener('click', () => {
-  setShowThinking(!thinkingToggleChip.classList.contains('active'));
-});
-
-// Carrega o estado salvo assim que a página abre.
-fetch(`${window.HermesState.API_BASE}/profile/`)
-  .then((res) => (res.ok ? res.json() : null))
-  .then((profile) => {
-    if (profile) setShowThinking(!!profile.show_thinking, { persist: false });
-  })
-  .catch(() => {});
 
 // Microfone: toast simples
 const micBtn = document.querySelector('.input-icon-btn[title="Microfone"]');

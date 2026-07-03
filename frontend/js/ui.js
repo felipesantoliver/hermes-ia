@@ -63,7 +63,7 @@ input.addEventListener('input', () => {
   input.style.height = Math.min(input.scrollHeight, 160) + 'px';
 });
 
-/* ---------- Chips de modo: apenas um ativo por vez (code / think / analyst) ---------- */
+/* ---------- Chips de modo: apenas um ativo por vez (code / engineer / analyst) ---------- */
 const MODE_CHIP_IDS = ['mode-code', 'mode-engineer', 'mode-analyst'];
 MODE_CHIP_IDS.forEach((id) => {
   document.getElementById(id).addEventListener('click', function () {
@@ -75,4 +75,15 @@ MODE_CHIP_IDS.forEach((id) => {
       this.classList.add('active');
     }
   });
+});
+
+/* ---------- Chip Web (toggle, não exclusivo) ---------- */
+const webToggle = document.getElementById('web-toggle');
+if (!window.HermesState.webSearchEnabled) {
+  window.HermesState.webSearchEnabled = false;
+}
+webToggle.addEventListener('click', function () {
+  const enabled = !this.classList.contains('active');
+  this.classList.toggle('active', enabled);
+  window.HermesState.webSearchEnabled = enabled;
 });
