@@ -19,9 +19,11 @@
       loadProfileIntoSettings();
       profileLoadedForSettings = true;
     }
+    startResourceMeterPolling();
   }
   function closeSettings() {
     overlay.classList.remove('open');
+    stopResourceMeterPolling();
   }
 
   openBtn.addEventListener('click', openSettings);
@@ -205,4 +207,57 @@
       patchProfile({ ram_limit_gb: value });
     }, 500);
   });
+
+  /* ---------- Medidor de RAM/CPU em tempo real ---------- */
+  const RESOURCE_POLL_INTERVAL_MS = 5000;
+  const resourceMeterFill = document.getElementById('resource-meter-fill');
+  const resourceMeterRamLabel = document.getElementById('resource-meter-ram-label');
+  const resourceMeterCpuLabel = document.getElementById('resource-meter-cpu-label');
+  const resourceMeterStatus = document.getElementById('resource-meter-status');
+
+  let resourcePollTimer = null;
+
+  async function fetchAndRenderResourceStatus() {
+    try {
+      const res = await fetch(`${API()}/system/status`);
+      if (!res.ok) throw new Error('Falha ao consultar /system/status');
+      const status = await res.json();
+      renderResourceStatus(status);
+    } catch (err) {
+      console.error('[Hermes] Erro ao consultar status de recursos:', err);
+      resourceMeterStatus.textContent = 'Indicador indisponível';
+    }
+  }
+
+  function renderResourceStatus(status) {
+    const percent = Math.max(0, Math.min(100, status.ram_percent));
+    resourceMeterFill.style.width = percent + '%';
+    resourceMeterFill.classList.remove('warn', 'danger');
+    if (status.under_pressure) {
+      resourceMeterFill.classList.add('danger');
+    } else if (percent >= 60) {
+      resourceMeterFill.classList.add('warn');
+    }
+
+    resourceMeterRamLabel.textContent = `${status.ram_used_gb} / ${status.ram_limit_gb} GB`;
+    resourceMeterCpuLabel.textContent = `CPU: ${status.cpu_percent}%`;
+
+    resourceMeterStatus.classList.toggle('danger', !!status.under_pressure);
+    resourceMeterStatus.textContent = status.under_pressure
+      ? `Recursos escassos (${status.process_count} processo(s) ativo(s))`
+      : `Normal (${status.process_count} processo(s) ativo(s))`;
+  }
+
+  function startResourceMeterPolling() {
+    if (resourcePollTimer) return;
+    fetchAndRenderResourceStatus();
+    resourcePollTimer = setInterval(fetchAndRenderResourceStatus, RESOURCE_POLL_INTERVAL_MS);
+  }
+
+  function stopResourceMeterPolling() {
+    if (resourcePollTimer) {
+      clearInterval(resourcePollTimer);
+      resourcePollTimer = null;
+    }
+  }
 })();

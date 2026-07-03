@@ -9,6 +9,7 @@ from app.projects import router as projects_router
 from app.chats import router as chats_router
 from app.profile import router as profile_router
 from app.files import router as files_router
+from app.system import router as system_router
 
 from app.db import init_db
 from app.config import settings
@@ -42,6 +43,7 @@ app.include_router(projects_router, tags=["projects"])
 app.include_router(chats_router, tags=["chats"])
 app.include_router(profile_router, tags=["profile"])
 app.include_router(files_router, tags=["files"])
+app.include_router(system_router, tags=["system"])
 
 
 # --------------------- HEALTHCHECK ---------------------

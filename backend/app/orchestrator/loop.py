@@ -9,9 +9,13 @@ from ..tools.base import ToolResult
 from ..config import settings
 from ..db import DATA_DIR
 from ..memory.context_builder import build_memory_context
+from ..monitor import get_monitor, HEAVY_TOOL_NAMES
 from .analyst import AnalystOrchestrator
 
 logger = logging.getLogger(__name__)
+
+RESOURCE_PRESSURE_MESSAGE = "Recursos escassos, resposta pode demorar"
+
 
 class AgentLoop:
     def __init__(self, llm_client: LLMClient, max_iterations: int = 6, analyst_max_iterations: int = 12):
@@ -61,6 +65,30 @@ class AgentLoop:
 
         return conv
 
+    # ------------------------------------------------------------------
+    # Monitoramento de recursos: decide se uma tool pesada deve ser pausada.
+    # Compartilhado entre run() e run_stream().
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _resolve_tool_result(tool_name: str, params: Dict[str, Any]) -> ToolResult:
+        """Executa a tool normalmente, a menos que seja uma tool pesada e o
+        monitor de recursos esteja sinalizando pressão — nesse caso, a
+        execução é pausada e o LLM recebe um erro claro em vez do resultado,
+        podendo decidir como prosseguir (ex: tentar de novo mais tarde,
+        avisar o usuário)."""
+        if tool_name in HEAVY_TOOL_NAMES and get_monitor().is_under_pressure():
+            return ToolResult(
+                success=False,
+                error=(
+                    f"Tool '{tool_name}' pausada temporariamente: recursos do sistema "
+                    "(RAM/CPU) estão sob pressão. Tente novamente em instantes."
+                ),
+            )
+        tool = get_tool(tool_name)
+        if not tool:
+            return ToolResult(success=False, error=f"Ferramenta '{tool_name}' não encontrada.")
+        return tool.run(**params)
+
     async def run(
         self,
         messages: List[Dict[str, str]],
@@ -107,21 +135,14 @@ class AgentLoop:
                 if "tool" in data and "parameters" in data:
                     tool_name = data["tool"]
                     params = data["parameters"]
-                    tool = get_tool(tool_name)
-                    if tool:
-                        result: ToolResult = tool.run(**params)
-                        # Adicionar resultado ao histórico
-                        conv.append({"role": "assistant", "content": response})
-                        conv.append({
-                            "role": "user",
-                            "content": f"Resultado da ferramenta {tool_name}: {result.data if result.success else f'Erro: {result.error}'}"
-                        })
-                        continue  # volta ao início do loop para nova iteração
-                    else:
-                        # Ferramenta não encontrada
-                        conv.append({"role": "assistant", "content": response})
-                        conv.append({"role": "user", "content": f"Ferramenta '{tool_name}' não encontrada."})
-                        continue
+                    result: ToolResult = self._resolve_tool_result(tool_name, params)
+                    # Adicionar resultado ao histórico
+                    conv.append({"role": "assistant", "content": response})
+                    conv.append({
+                        "role": "user",
+                        "content": f"Resultado da ferramenta {tool_name}: {result.data if result.success else f'Erro: {result.error}'}"
+                    })
+                    continue  # volta ao início do loop para nova iteração
             except json.JSONDecodeError:
                 # Não é JSON, resposta final
                 # Registrar log
@@ -135,6 +156,13 @@ class AgentLoop:
     # Versão streaming: mesmo protocolo/loop de tools, mas a última
     # iteração (a que não é uma tool call) tem seus tokens emitidos em
     # tempo real, conforme chegam do servidor LLM.
+    #
+    # Formato de saída: cada item gerado é um dict {"event": ..., "data": ...}
+    # - {"event": "token", "data": "<fragmento de texto>"}: fragmento da
+    #   resposta final, para acumular e exibir incrementalmente.
+    # - {"event": "system", "data": "<mensagem>"}: aviso do sistema (ex:
+    #   recursos sob pressão), a ser exibido separadamente (ex: notificação
+    #   nativa no navegador), NUNCA concatenado à resposta do Hermes.
     #
     # Como o protocolo de tool call é "responda com um JSON", não dá para
     # saber de antemão se uma iteração vai virar tool call ou resposta
@@ -152,8 +180,15 @@ class AgentLoop:
         chat_id: Optional[str] = None,
         mode: Optional[str] = None,
         agent_type: Optional[str] = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[Dict[str, str]]:
         conv = self._prepare_conversation(messages, project_id, chat_id, mode)
+
+        # Aviso único de recursos sob pressão por chamada (evita repetir o
+        # aviso a cada iteração do loop caso a pressão persista).
+        pressure_warned = False
+        if get_monitor().is_under_pressure():
+            pressure_warned = True
+            yield {"event": "system", "data": RESOURCE_PRESSURE_MESSAGE}
 
         # Modo Analista: o processo de decomposição/múltiplos candidatos/juiz
         # roda por dentro de várias iterações e só produz o texto final ao
@@ -163,12 +198,17 @@ class AgentLoop:
         if mode == "analyst":
             analyst = AnalystOrchestrator(llm_client=self.llm, max_iterations=self.analyst_max_iterations)
             final_text = analyst.run(messages=conv, project_id=project_id, chat_id=chat_id)
-            yield final_text
+            yield {"event": "token", "data": final_text}
             return
 
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
+
+            # Se a pressão surgiu no meio do loop (ainda não avisada), avisa agora.
+            if not pressure_warned and get_monitor().is_under_pressure():
+                pressure_warned = True
+                yield {"event": "system", "data": RESOURCE_PRESSURE_MESSAGE}
 
             try:
                 token_iter = self.llm.generate_stream(
@@ -178,7 +218,7 @@ class AgentLoop:
                 )
             except Exception as e:
                 logger.error(f"Erro no LLM (stream): {e}")
-                yield f"Erro interno: {str(e)}"
+                yield {"event": "token", "data": f"Erro interno: {str(e)}"}
                 return
 
             buffer = ""
@@ -193,10 +233,10 @@ class AgentLoop:
                             is_tool_call = stripped.startswith("{")
                     if is_tool_call is False:
                         # Resposta final sendo construída: repassa em tempo real
-                        yield token
+                        yield {"event": "token", "data": token}
             except Exception as e:
                 logger.error(f"Erro durante streaming do LLM: {e}")
-                yield f"\n[Erro durante a geração: {str(e)}]"
+                yield {"event": "token", "data": f"\n[Erro durante a geração: {str(e)}]"}
                 return
 
             response = buffer
@@ -209,37 +249,31 @@ class AgentLoop:
                     data = json.loads(response)
                 except json.JSONDecodeError:
                     self._log_conversation(chat_id, project_id, conv, response)
-                    yield response
+                    yield {"event": "token", "data": response}
                     return
 
                 if "tool" in data and "parameters" in data:
                     tool_name = data["tool"]
                     params = data["parameters"]
-                    tool = get_tool(tool_name)
-                    if tool:
-                        result: ToolResult = tool.run(**params)
-                        conv.append({"role": "assistant", "content": response})
-                        conv.append({
-                            "role": "user",
-                            "content": f"Resultado da ferramenta {tool_name}: {result.data if result.success else f'Erro: {result.error}'}"
-                        })
-                        continue  # próxima iteração do loop
-                    else:
-                        conv.append({"role": "assistant", "content": response})
-                        conv.append({"role": "user", "content": f"Ferramenta '{tool_name}' não encontrada."})
-                        continue
+                    result: ToolResult = self._resolve_tool_result(tool_name, params)
+                    conv.append({"role": "assistant", "content": response})
+                    conv.append({
+                        "role": "user",
+                        "content": f"Resultado da ferramenta {tool_name}: {result.data if result.success else f'Erro: {result.error}'}"
+                    })
+                    continue  # próxima iteração do loop
                 else:
                     # Era um JSON, mas não no formato de tool call esperado;
                     # trata como resposta final (ainda não emitida).
                     self._log_conversation(chat_id, project_id, conv, response)
-                    yield response
+                    yield {"event": "token", "data": response}
                     return
             else:
                 # Resposta final: já foi transmitida token a token acima.
                 self._log_conversation(chat_id, project_id, conv, response)
                 return
 
-        yield "Número máximo de iterações excedido. Por favor, refine sua pergunta."
+        yield {"event": "token", "data": "Número máximo de iterações excedido. Por favor, refine sua pergunta."}
 
     def _log_conversation(self, chat_id, project_id, messages, final_response):
         """Salva log em JSON lines."""

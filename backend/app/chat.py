@@ -156,9 +156,13 @@ async def _sse_event_stream(payload: ChatRequest, llm: LLMClient) -> AsyncIterat
     """Gera os eventos SSE (text/event-stream) para a rota /chat/stream.
 
     Eventos emitidos:
-      event: token  data: {"token": "..."}       -> um fragmento de texto
-      event: error  data: {"error": "..."}        -> erro durante a geração
-      event: done   data: {}                       -> fim do stream (sucesso)
+      event: token   data: {"token": "..."}        -> um fragmento de texto
+      event: system  data: {"message": "..."}       -> aviso do sistema (ex:
+                                                         recursos sob pressão),
+                                                         nunca concatenado à
+                                                         resposta do Hermes
+      event: error   data: {"error": "..."}         -> erro durante a geração
+      event: done    data: {}                        -> fim do stream (sucesso)
     """
     try:
         ctx = await _build_chat_context(payload)
@@ -171,15 +175,21 @@ async def _sse_event_stream(payload: ChatRequest, llm: LLMClient) -> AsyncIterat
     full_response = ""
 
     try:
-        async for token in loop.run_stream(
+        async for item in loop.run_stream(
             messages=ctx["messages"],
             project_id=ctx["project_id"],
             chat_id=payload.chat_id,
             mode=ctx["effective_mode"],
             agent_type=ctx["agent_type"],
         ):
-            full_response += token
-            token_payload = json.dumps({"token": token}, ensure_ascii=False)
+            event_type = item.get("event", "token")
+            data = item.get("data", "")
+            if event_type == "system":
+                sys_payload = json.dumps({"message": data}, ensure_ascii=False)
+                yield f"event: system\ndata: {sys_payload}\n\n"
+                continue
+            full_response += data
+            token_payload = json.dumps({"token": data}, ensure_ascii=False)
             yield f"event: token\ndata: {token_payload}\n\n"
     except Exception as e:
         err_payload = json.dumps({"error": str(e)}, ensure_ascii=False)

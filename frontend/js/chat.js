@@ -201,6 +201,10 @@ async function runStreamingChat(chatPayload) {
         hermesText += data.token;
         hermesBubble.textContent = hermesText;
         messagesEl.scrollTop = messagesEl.scrollHeight;
+      } else if (eventType === 'system' && typeof data.message === 'string') {
+        // Aviso do sistema (ex: recursos sob pressão). Nunca entra no
+        // texto da resposta do Hermes — só dispara notificação nativa.
+        window.HermesNotifications.notify('Hermes AI', data.message);
       } else if (eventType === 'error') {
         if (!hermesBubble) hermesBubble = createHermesBubble();
         hermesText += `\n❌ ${data.error || 'Falha na comunicação'}`;

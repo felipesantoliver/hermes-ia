@@ -7,6 +7,8 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 from ..tools.registry import get_tool
+from ..tools.base import ToolResult
+from ..monitor import get_monitor, HEAVY_TOOL_NAMES
 from ..db import DATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -270,7 +272,15 @@ class AnalystOrchestrator:
             if not tool:
                 evidence.append(f"Tool '{tool_name}' indisponível; verificação pulada.")
                 break
-            if tool_name == "run_python":
+            if tool_name in HEAVY_TOOL_NAMES and get_monitor().is_under_pressure():
+                result = ToolResult(
+                    success=False,
+                    error=(
+                        f"Tool '{tool_name}' pausada temporariamente: recursos do sistema "
+                        "(RAM/CPU) estão sob pressão. Tente novamente em instantes."
+                    ),
+                )
+            elif tool_name == "run_python":
                 result = tool.run(code=current_code)
             else:
                 result = tool.run(command=current_code)
@@ -285,6 +295,8 @@ class AnalystOrchestrator:
             })
 
             if result.success:
+                static_evidence = self._run_static_security_scan(subtask, current_code, lang)
+                evidence.extend(static_evidence)
                 return current_full_text, evidence
 
             attempt += 1
@@ -303,6 +315,43 @@ class AnalystOrchestrator:
 
         evidence.append("Falha persistente após tentativas de correção; solução entregue com ressalva.")
         return current_full_text, evidence
+
+    def _run_static_security_scan(self, subtask: str, code: str, lang: str) -> List[str]:
+        """Roda Bandit (Python) ou ShellCheck (shell) sobre o código já
+        verificado como executável. Nunca bloqueia a resposta final: apenas
+        reporta issues como evidência adicional, já que essas ferramentas
+        podem não estar instaladas em todo ambiente de deploy."""
+        evidence: List[str] = []
+        tool_name = "bandit_scan" if lang in ("python", "py", "") else "shellcheck_scan"
+        tool = get_tool(tool_name)
+        if not tool:
+            evidence.append(f"[segurança] Tool '{tool_name}' indisponível; verificação estática pulada.")
+            return evidence
+
+        try:
+            if get_monitor().is_under_pressure():
+                evidence.append(
+                    f"[segurança={tool_name}] pulado: recursos do sistema (RAM/CPU) sob pressão."
+                )
+                return evidence
+            if tool_name == "bandit_scan":
+                result = tool.run(code=code)
+            else:
+                result = tool.run(script=code)
+        except Exception as e:
+            evidence.append(f"[segurança={tool_name}] erro inesperado ao rodar: {e}")
+            return evidence
+
+        if not result.success:
+            evidence.append(f"[segurança={tool_name}] não executado: {result.error}")
+            return evidence
+
+        issue_count = result.data.get("issue_count", 0) if isinstance(result.data, dict) else 0
+        evidence.append(f"[segurança={tool_name}] {issue_count} issue(s) encontrada(s): {result.data}")
+        self._log("static_security_scan", {
+            "subtask": subtask, "tool": tool_name, "issue_count": issue_count, "data": result.data,
+        })
+        return evidence
 
     def _refine(self, conv: List[Dict[str, str]], subtask: str, candidate: str, evidence: List[str]) -> str:
         prompt = (

@@ -120,7 +120,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9.5 2a5.5 5.5 0 00-3 10.1V15a1 1 0 001 1h5a1 1 0 001-1v-2.9A5.5 5.5 0 009.5 2z" transform="translate(2.5 2)"/><path d="M9 21h6M10 18h4"/></svg>
               Modo pensador
             </div>
-            <div class="mode-chip" id="mode-analyst">  <!-- NOVO BLOCO -->
+            <div class="mode-chip" id="mode-analyst">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M21 21l-4.7-4.7" stroke-linecap="round"/></svg>
               Analista
             </div>
@@ -235,6 +235,20 @@
               <span id="memory-value">8 GB</span>
             </div>
             <div class="settings-row-desc">Limita quanta memória o núcleo local pode usar. Ajuste conforme o hardware da sua máquina.</div>
+
+            <div class="resource-meter" id="resource-meter">
+              <div class="resource-meter-header">
+                <span>Uso atual</span>
+                <span class="resource-meter-value" id="resource-meter-ram-label">-- / -- GB</span>
+              </div>
+              <div class="resource-meter-bar">
+                <div class="resource-meter-fill" id="resource-meter-fill" style="width: 0%"></div>
+              </div>
+              <div class="resource-meter-footer">
+                <span id="resource-meter-status">Aguardando dados...</span>
+                <span id="resource-meter-cpu-label">CPU: --%</span>
+              </div>
+            </div>
           </div>
         </div>
 
