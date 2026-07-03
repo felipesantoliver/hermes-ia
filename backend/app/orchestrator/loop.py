@@ -28,6 +28,16 @@ DEFAULT_TOOLS = [
     "shellcheck_scan",
 ]
 
+# ===================== PROMPTS ESPECÍFICOS POR AGENTE =====================
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+def _load_agent_prompt(agent_type: str) -> str:
+    """Carrega o prompt específico do agente, se existir."""
+    prompt_path = PROMPTS_DIR / f"{agent_type}_agent.txt"
+    if prompt_path.exists():
+        return prompt_path.read_text(encoding="utf-8")
+    return ""
+
 
 class AgentLoop:
     def __init__(
@@ -53,10 +63,22 @@ class AgentLoop:
         chat_id: Optional[str],
         mode: Optional[str],
         enabled_tools: Optional[List[str]] = None,
+        agent_type: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         conv = messages.copy()
 
         sys_msg = next((m for m in conv if m["role"] == "system"), None)
+
+        # Adicionar prompt específico do agente, se disponível
+        agent_prompt = _load_agent_prompt(agent_type) if agent_type else ""
+        if agent_prompt:
+            if sys_msg:
+                sys_msg["content"] += "\n\n" + agent_prompt
+            else:
+                sys_msg = {"role": "system", "content": agent_prompt}
+                conv.insert(0, sys_msg)
+
+        # Ferramentas (exceto no modo analyst)
         if mode != "analyst":
             if enabled_tools is None:
                 tool_names = [t.name for t in list_tools()]
@@ -345,7 +367,9 @@ class AgentLoop:
         if web_search:
             enabled_tools.append("web_search")
 
-        conv = self._prepare_conversation(messages, project_id, chat_id, mode, enabled_tools)
+        conv = self._prepare_conversation(
+            messages, project_id, chat_id, mode, enabled_tools, agent_type=agent_type
+        )
 
         # Modo Analista
         if mode == "analyst":
@@ -419,7 +443,9 @@ class AgentLoop:
         if web_search:
             enabled_tools.append("web_search")
 
-        conv = self._prepare_conversation(messages, project_id, chat_id, mode, enabled_tools)
+        conv = self._prepare_conversation(
+            messages, project_id, chat_id, mode, enabled_tools, agent_type=agent_type
+        )
 
         def thought(text: str):
             return {"event": "thinking", "data": text}

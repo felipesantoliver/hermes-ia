@@ -3,7 +3,7 @@
 **Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
 O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
-> **Status:** ✅ MVP concluído | ✅ V1 concluída | 🟡 V2 em desenvolvimento (Modo Engenheiro, RAG avançado, pesquisa web, planejamento multi‑step)
+> **Status:** ✅ MVP concluído | ✅ V1 concluída | 🟡 V2 em desenvolvimento (Modo Engenheiro, RAG avançado, pesquisa web, planejamento multi‑step, **especialização por domínio**).
 
 ---
 
@@ -30,13 +30,14 @@ O Hermes é um ambiente onde **projetos são entidades vivas**, decisões arquit
 - **LLM local** (Qwen 7B–8B quantizado)
 - **Ferramentas executáveis** em sandbox (Python, shell, compilação, análise estática…)
 - **Memória estruturada** por projeto (3 camadas + RAG semântico para código)
-- **Agentes lógicos** configuráveis (Desenvolvedor, Arquiteto, Firmware, Revisor)
+- **Agentes lógicos** configuráveis (Desenvolvedor, Arquiteto, Firmware, Revisor, **Android**)
 - **Modo Analista** – verificação rigorosa multi-etapa com o mesmo modelo
 - **Modo Engenheiro** – segundo modelo local maior, opcional, para raciocínio mais profundo
 - **Streaming SSE** e **Pensamento Visível** para total transparência
 - **Pesquisa web** integrada (via SearXNG local)
 - **RAG avançado** para código (busca semântica em funções/classes do projeto)
 - **Planejamento multi‑step explícito** (V2.2) – o Hermes gera um plano de ação antes de executar tarefas complexas, exibindo os passos e progresso em tempo real
+- **Especialização por domínio** (V2.3) – chips Firmware e Android, com ferramentas dedicadas (BLE, Gradle, validação de layouts)
 
 > O objetivo não é gerar respostas – é **resolver problemas de engenharia de forma contínua e incremental**.
 
@@ -51,13 +52,13 @@ Backend (FastAPI) – /chat, /projects, /chats, /profile, /files, /system
 ↓
 Orquestrador (AgentLoop) – gerencia o ciclo de raciocínio
 ↓
-Classificador híbrido (embeddings + heurística) – escolhe o agente
+Classificador híbrido (embeddings + heurística + domínio) – escolhe o agente
 ↓
 LLM Core (Qwen 7B/8B) – ou modelo Engenheiro opcional
 ↓
 Planejador multi‑step (V2.2) – gera planos de ação para tarefas complexas
 ↓
-Tools (sandbox) – Python, Shell, arquivos, busca, indexação, firmware…
+Tools (sandbox) – Python, Shell, arquivos, busca, indexação, firmware, **BLE, Gradle, layout**
 ↓
 Memória (3 camadas + RAG com FAISS para código)
 ↓
@@ -74,6 +75,7 @@ text
 - Log de auditoria de todas as execuções de ferramentas
 - **RAG para código**: busca semântica em funções/classes indexadas via FAISS, ativada automaticamente para perguntas técnicas
 - **Planejador multi‑step**: gera planos de ação estruturados (passos com dependências) para tarefas complexas, com suporte a replanejamento em caso de falha
+- **Especialização por domínio**: agentes Firmware e Android com prompts e ferramentas dedicadas
 
 ### Frontend (SPA vanilla)
 - HTML/CSS/JS puro, sem frameworks; Three.js para visualizações 3D
@@ -83,6 +85,7 @@ text
 - Estado global compartilhado (`HermesState`) e modais auto-save
 - **Chip "Web"** para ativar/desativar a pesquisa web na conversa atual
 - **Card de plano expansível** com checkboxes e indicadores de progresso (V2.2)
+- **Chips de domínio**: Firmware e Android, que podem ser combinados com os modos existentes
 
 ### LLM Core (Qwen 7B–8B)
 - Modelo local quantizado (Q4–Q5) executado via llama.cpp
@@ -95,7 +98,7 @@ text
 
 ### Orquestrador e Agent Loop
 O `AgentLoop` (arquivo `loop.py`):
-1. Prepara o prompt (sistema + tools + memória + RAG)
+1. Prepara o prompt (sistema + tools + memória + RAG + prompt específico do agente)
 2. Se a tarefa for complexa, invoca o `Planner` para gerar um plano multi‑step
 3. Chama o LLM (streaming ou não)
 4. Se a resposta for uma chamada de ferramenta (JSON), executa e realimenta o resultado
@@ -112,13 +115,14 @@ O `AgentLoop` (arquivo `loop.py`):
 
 ### Agentes Lógicos
 Configurações de comportamento definidas por system prompt, ferramentas e recorte de contexto.  
-Selecionados por um classificador híbrido (embeddings + heurística).
+Selecionados por um classificador híbrido (embeddings + heurística + domínio explícito).
 
 | Agente        | Responsabilidade |
 |---------------|------------------|
 | Desenvolvedor | Implementa, refatora e depura código |
 | Arquiteto     | Estrutura sistemas, planeja arquitetura |
-| Firmware      | Microcontroladores, registradores, periféricos (ESP32, STM32…) |
+| Firmware      | Microcontroladores, registradores, periféricos (ESP32, STM32…), BLE |
+| Android       | Desenvolvimento Android (Kotlin/Java, Gradle, layouts) |
 | Revisor       | Qualidade, segurança e conformidade |
 | Analista*     | Loop rigoroso com múltiplos candidatos, juiz e checklists |
 | Engenheiro*   | Usa modelo maior opcional para raciocínio profundo |
@@ -135,6 +139,9 @@ Executadas em sandbox com restrições rigorosas:
 - **CodebaseIndexTool**: indexação FAISS de funções/classes (preparação RAG)
 - **FirmwareTool**: detecção e compilação de projetos C/C++ com PlatformIO
 - **BanditTool / ShellCheckTool**: análise estática de segurança
+- **BLEConfigTool**: geração de código BLE a partir de JSON (ESP32, genérico)
+- **GradleBuildTool**: execução de tarefas Gradle em projetos Android
+- **LayoutValidatorTool**: validação de layouts XML Android
 - **Log de auditoria**: todas as execuções registradas (`tool_audit.jsonl`)
 
 ### Memória e RAG
@@ -163,6 +170,12 @@ Ativado manualmente ou automaticamente para contextos de alto rigor. Processo:
 - **Comportamento**: usa o modelo maior diretamente, com no máximo 4 iterações, mantendo a verificação por tools e memória.
 - **Integração com o Analista**: se disponível, o modo Analista utiliza o modelo engenheiro para gerar candidatos e atuar como juiz, aumentando a qualidade sem custo extra de iterações.
 - **Fallback**: se o modelo engenheiro não estiver configurado ou falhar, o sistema volta automaticamente ao modelo padrão, com log.
+
+### Especialização por Domínio (V2.3)
+- **FirmwareAgent**: especializado em C/C++ para microcontroladores, BLE, registradores. Tools: FirmwareTool, BLEConfigTool.
+- **AndroidAgent**: especializado em desenvolvimento Android (Kotlin/Java). Tools: GradleBuildTool, LayoutValidatorTool.
+- Ativação via chips de domínio no frontend, que podem ser combinados com os modos existentes (code, engineer, analyst).
+- O agente é selecionado automaticamente se o domínio for detectado pela heurística (classificador híbrido) ou forçado pelo usuário.
 
 ### Pensamento Visível
 Quando o modo Analista está ativo, o backend emite eventos `thinking` (SSE) com a narrativa do raciocínio. O frontend exibe isso em um bloco expansível acima da resposta final.
@@ -200,7 +213,7 @@ hermes-ai/
 │ │ ├── orchestrator/
 │ │ │ ├── loop.py
 │ │ │ ├── analyst.py
-│ │ │ ├── planner.py       # NOVO V2.2
+│ │ │ ├── planner.py
 │ │ │ ├── router.py
 │ │ │ └── context_builder.py
 │ │ ├── memory/
@@ -217,9 +230,15 @@ hermes-ai/
 │ │ │ ├── codebase_index.py
 │ │ │ ├── firmware.py
 │ │ │ ├── security_static.py
+│ │ │ ├── ble_config.py       # NOVO V2.3
+│ │ │ ├── gradle_build.py     # NOVO V2.3
+│ │ │ ├── layout_validator.py # NOVO V2.3
 │ │ │ ├── audit.py
 │ │ │ └── indexer.py
 │ │ ├── prompts/
+│ │ │ ├── analyst_system.txt
+│ │ │ ├── firmware_agent.txt  # NOVO V2.3
+│ │ │ └── android_agent.txt   # NOVO V2.3
 │ │ └── knowledge/checklists/
 │ ├── data/
 │ ├── scripts/
@@ -233,7 +252,9 @@ hermes-ai/
 │ │ ├── test_stress_memory.py
 │ │ ├── test_thinking_visible.py
 │ │ ├── test_code_rag.py
-│ │ └── test_planner.py       # NOVO V2.2
+│ │ ├── test_planner.py
+│ │ ├── test_firmware_agent.py # NOVO V2.3
+│ │ └── test_android_agent.py  # NOVO V2.3
 │ ├── requirements.txt
 │ └── README.md
 ├── frontend/
@@ -274,6 +295,7 @@ text
 - **PlatformIO** (opcional, para compilação de firmware)
 - **Bandit / ShellCheck** (opcionais, para análise estática)
 - **llama-cpp-python** (opcional, para carregamento embarcado do modelo engenheiro)
+- **Gradle** (opcional, para builds Android)
 
 ### Passos
 
@@ -337,12 +359,14 @@ Funcionalidade	Descrição
 🌐 Pesquisa Web	Ativação por chip "Web" – usa SearXNG local para enriquecer respostas com informações da internet.
 📊 Monitor	Medição contínua de RAM/CPU com pausa automática de ferramentas pesadas.
 📝 Logs	Auditoria de todas as execuções de tools, logs de conversa e do modo analista (JSONL).
+🛠️ Domínio Firmware	Agente especializado com ferramentas BLE e compilação PlatformIO.
+📱 Domínio Android	Agente especializado com ferramentas Gradle e validação de layouts.
 Roadmap
 ✅ MVP (concluído) – Backend FastAPI, SQLite, SPA vanilla, integração com LLM local, Agent Loop básico, memória em 3 camadas, classificador heurístico.
 
 ✅ V1 (concluída) – Modo Analista completo, streaming SSE, Pensamento Visível, classificador híbrido, monitor de recursos, notificações push, sandbox reforçado, testes automatizados.
 
-🟡 V2 (em desenvolvimento) – Modo Engenheiro (implementado), RAG avançado (implementado), pesquisa web (implementada), planejamento multi‑step (implementado), especialização por domínio (Android, BLE…), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
+🟡 V2 (em desenvolvimento) – Modo Engenheiro (implementado), RAG avançado (implementado), pesquisa web (implementada), planejamento multi‑step (implementado), especialização por domínio (implementado), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
 
 Princípios Fundamentais
 Local-first – Nada depende de nuvem; dados e processamento permanecem na máquina do usuário.

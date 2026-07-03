@@ -21,6 +21,7 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     mode: Optional[str] = None          # "code", "engineer" ou "analyst"
+    domain: Optional[str] = None        # "firmware", "android" (V2.3)
     project_id: Optional[str] = None
     chat_id: str                        # obrigatório, pois já criamos antes
     show_thinking: bool = False         # ativa o streaming do raciocínio interno ("thinking")
@@ -111,8 +112,8 @@ async def _build_chat_context(payload: ChatRequest) -> dict:
     # Adicionar a mensagem atual do usuário (já foi salva, mas vamos adicionar para garantir)
     messages.append({"role": "user", "content": payload.message})
 
-    # 8. Selecionar o agente adequado (classificador híbrido: embeddings + heurística)
-    agent_type = select_agent(payload.mode, payload.message)
+    # 8. Selecionar o agente adequado (classificador híbrido: embeddings + heurística + domínio)
+    agent_type = select_agent(payload.mode, payload.message, domain=payload.domain)
 
     return {
         "messages": messages,
@@ -120,6 +121,7 @@ async def _build_chat_context(payload: ChatRequest) -> dict:
         "agent_type": agent_type,
         "project_id": payload.project_id,
         "web_search": payload.web_search,
+        "domain": payload.domain,
     }
 
 
@@ -149,6 +151,7 @@ async def chat_endpoint(
         mode=ctx["effective_mode"],
         agent_type=ctx["agent_type"],
         web_search=ctx["web_search"],
+        domain=ctx["domain"],           # passado para o loop, mesmo que não seja usado diretamente
     )
 
     _save_hermes_reply(payload.chat_id, result)
@@ -194,6 +197,7 @@ async def _sse_event_stream(payload: ChatRequest, llm: LLMClient) -> AsyncIterat
             agent_type=ctx["agent_type"],
             show_thinking=payload.show_thinking,
             web_search=ctx["web_search"],
+            domain=ctx["domain"],           # passado para o loop, mesmo que não seja usado diretamente
         ):
             event_type = item.get("event", "token")
             data = item.get("data", "")

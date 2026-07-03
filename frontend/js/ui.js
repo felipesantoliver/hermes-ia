@@ -1,7 +1,7 @@
 /* ===================== INTERAÇÕES DE INTERFACE ===================== */
 /* Responsabilidade: sidebar (recolher/expandir, novo chat), tema
    (claro/escuro) e comportamento geral do campo de entrada
-   (auto-resize, foco, chips de modo). Não lida com envio/mensagens. */
+   (auto-resize, foco, chips de modo e domínio). Não lida com envio/mensagens. */
 
 /* ---------- Sidebar ---------- */
 const sidebar = document.getElementById('sidebar');
@@ -76,6 +76,46 @@ MODE_CHIP_IDS.forEach((id) => {
     }
   });
 });
+
+/* ---------- Chips de domínio: exclusivos entre si, mas não com modos ---------- */
+const DOMAIN_CHIP_IDS = ['domain-firmware', 'domain-android'];
+DOMAIN_CHIP_IDS.forEach((id) => {
+  document.getElementById(id).addEventListener('click', function () {
+    const wasActive = this.classList.contains('active');
+    DOMAIN_CHIP_IDS.forEach((otherId) => {
+      document.getElementById(otherId).classList.remove('active');
+    });
+    if (!wasActive) {
+      this.classList.add('active');
+      // Atualiza o badge do título
+      updateDomainBadge(this.id.replace('domain-', ''));
+    } else {
+      updateDomainBadge(null);
+    }
+  });
+});
+
+/* ---------- Função para atualizar o badge no cabeçalho ---------- */
+function updateDomainBadge(domain) {
+  const titleEl = document.getElementById('agent-title');
+  if (domain) {
+    const displayName = domain.charAt(0).toUpperCase() + domain.slice(1);
+    titleEl.textContent = `Hermes · ${displayName}`;
+  } else {
+    titleEl.textContent = 'Hermes';
+  }
+}
+
+/* ---------- Expor função para obter o domínio ativo (usado em chat.js) ---------- */
+window.getActiveDomain = function() {
+  for (const id of DOMAIN_CHIP_IDS) {
+    const chip = document.getElementById(id);
+    if (chip.classList.contains('active')) {
+      return id.replace('domain-', '');
+    }
+  }
+  return null;
+};
 
 /* ---------- Chip Web (toggle, não exclusivo) ---------- */
 const webToggle = document.getElementById('web-toggle');

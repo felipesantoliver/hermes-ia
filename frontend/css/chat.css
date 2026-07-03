@@ -78,6 +78,17 @@
 .mode-chip:hover{color:var(--text-hi);border-color:var(--purple-soft);}
 .mode-chip.active{background:var(--purple-soft);border-color:var(--purple);color:var(--text-hi);}
 
+/* Adicionar estilo para os chips de domínio (já usam .mode-chip, mas podemos diferenciar) */
+.mode-chip.domain-chip {
+  border-color: var(--purple-soft);
+  background: var(--bg-deep);
+}
+.mode-chip.domain-chip.active {
+  background: var(--purple-soft);
+  border-color: var(--purple);
+  color: var(--text-hi);
+}
+
 /* Indicador do Modo Analista */
 .analyst-indicator-label{font-size:13px;color:var(--text-mid);margin-bottom:8px;}
 .analyst-progress-track{width:220px;max-width:60vw;height:4px;border-radius:999px;background:var(--bg-elevated);overflow:hidden;}

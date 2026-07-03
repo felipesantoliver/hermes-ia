@@ -388,6 +388,9 @@ async function runStreamingChat(chatPayload) {
  * (POST /chat/), que continua funcionando como antes.
  */
 async function sendMessageToBackend(userText, mode, projectId) {
+  // Obtém o domínio ativo (se disponível)
+  const domain = window.getActiveDomain ? window.getActiveDomain() : null;
+
   if (mode === 'analyst') {
     showAnalystIndicator();
   } else {
@@ -427,6 +430,7 @@ async function sendMessageToBackend(userText, mode, projectId) {
     const chatPayload = {
       message: userText,
       mode: mode || null,
+      domain: domain || null,           // <-- NOVO CAMPO
       project_id: projectId || null,
       chat_id: chatId,
       // Pensamento visível: ativado apenas no modo analista

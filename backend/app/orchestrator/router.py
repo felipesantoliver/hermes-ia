@@ -24,6 +24,14 @@ from ..db import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
+# ===================== MODIFICAÇÃO: MAPEAMENTO DOMÍNIO → AGENTE =====================
+DOMAIN_AGENT_MAP = {
+    "firmware": "firmware",
+    "android": "android",      # <-- se você tiver um agente específico para Android
+    # outros domínios podem ser adicionados conforme necessário
+}
+# ====================================================================================
+
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 EMBEDDING_SIMILARITY_THRESHOLD = 0.7
 
@@ -387,14 +395,23 @@ def get_router() -> HybridAgentRouter:
     return _router_singleton
 
 
-def select_agent(mode: Optional[str], user_message: str) -> str:
-    """Mantém a assinatura/retorno original (nome do agente principal) para
-    compatibilidade com quem já chama select_agent(mode, message).
+# ===================== FUNÇÕES MODIFICADAS PARA ACEITAR DOMAIN =====================
+def select_agent(mode: Optional[str], user_message: str, domain: Optional[str] = None) -> str:
+    """Retorna o nome do agente principal. Se domain for fornecido e estiver
+    mapeado, força o agente correspondente; caso contrário, faz a classificação
+    normal.
     """
+    if domain and domain in DOMAIN_AGENT_MAP:
+        return DOMAIN_AGENT_MAP[domain]
     return get_router().classify(mode, user_message)["agent"]
 
 
-def get_active_agents(mode: Optional[str], user_message: str) -> List[str]:
+def get_active_agents(mode: Optional[str], user_message: str, domain: Optional[str] = None) -> List[str]:
     """Retorna todos os agentes ativos para a mensagem, incluindo o Revisor
-    quando o modo analista está ativo."""
+    quando o modo analista está ativo. Se domain for fornecido, força a lista
+    com o agente correspondente.
+    """
+    if domain and domain in DOMAIN_AGENT_MAP:
+        return [DOMAIN_AGENT_MAP[domain]]
     return get_router().classify(mode, user_message)["agents"]
+# ====================================================================================
