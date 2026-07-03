@@ -1,9 +1,9 @@
-# 🧠 Hermes AI
+🧠 Hermes AI
 
 **Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
 O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
-> **Status:** ✅ MVP concluído | ✅ V1 concluída | 🟡 V2 em desenvolvimento (Modo Engenheiro implementado, RAG avançado, pesquisa web)
+> **Status:** ✅ MVP concluído | ✅ V1 concluída | 🟡 V2 em desenvolvimento (Modo Engenheiro, RAG avançado, pesquisa web, planejamento multi‑step)
 
 ---
 
@@ -36,6 +36,7 @@ O Hermes é um ambiente onde **projetos são entidades vivas**, decisões arquit
 - **Streaming SSE** e **Pensamento Visível** para total transparência
 - **Pesquisa web** integrada (via SearXNG local)
 - **RAG avançado** para código (busca semântica em funções/classes do projeto)
+- **Planejamento multi‑step explícito** (V2.2) – o Hermes gera um plano de ação antes de executar tarefas complexas, exibindo os passos e progresso em tempo real
 
 > O objetivo não é gerar respostas – é **resolver problemas de engenharia de forma contínua e incremental**.
 
@@ -54,11 +55,13 @@ Classificador híbrido (embeddings + heurística) – escolhe o agente
 ↓
 LLM Core (Qwen 7B/8B) – ou modelo Engenheiro opcional
 ↓
+Planejador multi‑step (V2.2) – gera planos de ação para tarefas complexas
+↓
 Tools (sandbox) – Python, Shell, arquivos, busca, indexação, firmware…
 ↓
 Memória (3 camadas + RAG com FAISS para código)
 ↓
-Resposta final (streaming SSE + pensamento visível opcional)
+Resposta final (streaming SSE + pensamento visível opcional + plano)
 
 text
 
@@ -70,14 +73,16 @@ text
 - Monitor de recursos em background (RAM/CPU)
 - Log de auditoria de todas as execuções de ferramentas
 - **RAG para código**: busca semântica em funções/classes indexadas via FAISS, ativada automaticamente para perguntas técnicas
+- **Planejador multi‑step**: gera planos de ação estruturados (passos com dependências) para tarefas complexas, com suporte a replanejamento em caso de falha
 
 ### Frontend (SPA vanilla)
 - HTML/CSS/JS puro, sem frameworks; Three.js para visualizações 3D
 - Views: Chat, Projetos, Galeria
 - Sidebar com chats fixados, recentes, navegação e mini-esfera 3D reativa
-- Consumo de eventos SSE (`token`, `thinking`, `system`, `error`, `done`)
+- Consumo de eventos SSE (`token`, `thinking`, `system`, `error`, `done`, `plan`, `step_progress`, etc.)
 - Estado global compartilhado (`HermesState`) e modais auto-save
 - **Chip "Web"** para ativar/desativar a pesquisa web na conversa atual
+- **Card de plano expansível** com checkboxes e indicadores de progresso (V2.2)
 
 ### LLM Core (Qwen 7B–8B)
 - Modelo local quantizado (Q4–Q5) executado via llama.cpp
@@ -91,11 +96,19 @@ text
 ### Orquestrador e Agent Loop
 O `AgentLoop` (arquivo `loop.py`):
 1. Prepara o prompt (sistema + tools + memória + RAG)
-2. Chama o LLM (streaming ou não)
-3. Se a resposta for uma chamada de ferramenta (JSON), executa e realimenta o resultado
-4. Itera até obter resposta final ou atingir o limite
-5. No **Modo Analista**, delega para o `AnalystOrchestrator`
-6. No **Modo Engenheiro**, usa o modelo maior com menos iterações (4)
+2. Se a tarefa for complexa, invoca o `Planner` para gerar um plano multi‑step
+3. Chama o LLM (streaming ou não)
+4. Se a resposta for uma chamada de ferramenta (JSON), executa e realimenta o resultado
+5. Itera até obter resposta final ou atingir o limite
+6. No **Modo Analista**, delega para o `AnalystOrchestrator` (que pode usar o plano como base)
+7. No **Modo Engenheiro**, usa o modelo maior com menos iterações (4)
+
+### Planejador Multi‑step (V2.2)
+- Detecta tarefas complexas por heurística (tamanho ou palavras‑chave)
+- Gera um plano estruturado (lista de passos com descrição, ferramenta, parâmetros e dependências) usando o LLM
+- O plano é exibido ao usuário como um card expansível com checkboxes
+- O orquestrador executa os passos sequencialmente, emitindo eventos SSE para atualizar o progresso
+- Suporta replanejamento automático se um passo falhar
 
 ### Agentes Lógicos
 Configurações de comportamento definidas por system prompt, ferramentas e recorte de contexto.  
@@ -138,7 +151,7 @@ O usuário pode desabilitar a memória globalmente.
 
 ### Modo Analista
 Ativado manualmente ou automaticamente para contextos de alto rigor. Processo:
-1. Decomposição da tarefa em subtarefas independentes
+1. Decomposição da tarefa em subtarefas independentes (ou uso de plano pré‑gerado)
 2. Para cada subtarefa: 3 candidatos, auto-crítica, juiz, verificação obrigatória com ferramentas, refinamento
 3. Integração global com debate interno (Arquiteto vs. Revisor) e checklists de domínio
 4. Resposta final com resumo, solução e evidências
@@ -152,12 +165,11 @@ Ativado manualmente ou automaticamente para contextos de alto rigor. Processo:
 - **Fallback**: se o modelo engenheiro não estiver configurado ou falhar, o sistema volta automaticamente ao modelo padrão, com log.
 
 ### Pensamento Visível
-Quando o modo Analista está ativo, o backend emite eventos `thinking` (SSE) com a narrativa do raciocínio. O frontend exibe isso em um bloco expansível acima da resposta final.  
-*(O antigo chip "Pensamento" foi removido; a funcionalidade foi incorporada ao Modo Analista.)*
+Quando o modo Analista está ativo, o backend emite eventos `thinking` (SSE) com a narrativa do raciocínio. O frontend exibe isso em um bloco expansível acima da resposta final.
 
 ### Streaming SSE
-Endpoint `/chat/stream` emite eventos: `token`, `thinking`, `system`, `error`, `done`.  
-O frontend renderiza a resposta em tempo real e destaca avisos do sistema.
+Endpoint `/chat/stream` emite eventos: `token`, `thinking`, `system`, `error`, `done`, e agora também `plan`, `step_start`, `step_progress`, `step_done`, `step_failed` (V2.2).  
+O frontend renderiza a resposta em tempo real e destaca avisos do sistema, além de exibir o plano e seu progresso.
 
 ### Monitor de Recursos
 Thread em background que mede RAM/CPU a cada 5s.  
@@ -188,11 +200,12 @@ hermes-ai/
 │ │ ├── orchestrator/
 │ │ │ ├── loop.py
 │ │ │ ├── analyst.py
+│ │ │ ├── planner.py       # NOVO V2.2
 │ │ │ ├── router.py
 │ │ │ └── context_builder.py
 │ │ ├── memory/
 │ │ │ ├── store.py
-│ │ │ ├── code_rag.py # NOVO: RAG para código
+│ │ │ ├── code_rag.py
 │ │ │ └── init.py
 │ │ ├── tools/
 │ │ │ ├── base.py
@@ -219,7 +232,8 @@ hermes-ai/
 │ │ ├── test_streaming.py
 │ │ ├── test_stress_memory.py
 │ │ ├── test_thinking_visible.py
-│ │ └── test_code_rag.py # NOVO
+│ │ ├── test_code_rag.py
+│ │ └── test_planner.py       # NOVO V2.2
 │ ├── requirements.txt
 │ └── README.md
 ├── frontend/
@@ -318,6 +332,7 @@ Funcionalidade	Descrição
 🔍 Modo Analista	Verificação rigorosa com decomposição, múltiplos candidatos, juiz, ferramentas e checklists.
 🧠 Pensamento Visível	Exibição do raciocínio interno em tempo real (bloco expansível) – ativo no Modo Analista.
 🚀 Modo Engenheiro	Modelo local maior opcional para tarefas complexas, com integração ao modo Analista.
+📋 Planejamento multi‑step (V2.2)	Geração automática de planos de ação para tarefas complexas, com exibição de progresso e replanejamento em caso de falha.
 🔧 Ferramentas	Execução segura de Python, shell, leitura de arquivos, busca, indexação, análise estática, compilação.
 🌐 Pesquisa Web	Ativação por chip "Web" – usa SearXNG local para enriquecer respostas com informações da internet.
 📊 Monitor	Medição contínua de RAM/CPU com pausa automática de ferramentas pesadas.
@@ -327,7 +342,7 @@ Roadmap
 
 ✅ V1 (concluída) – Modo Analista completo, streaming SSE, Pensamento Visível, classificador híbrido, monitor de recursos, notificações push, sandbox reforçado, testes automatizados.
 
-🟡 V2 (em desenvolvimento) – Modo Engenheiro (implementado), RAG avançado (implementado), pesquisa web (implementada), planejamento multi-step, especialização por domínio (Android, BLE…), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
+🟡 V2 (em desenvolvimento) – Modo Engenheiro (implementado), RAG avançado (implementado), pesquisa web (implementada), planejamento multi‑step (implementado), especialização por domínio (Android, BLE…), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
 
 Princípios Fundamentais
 Local-first – Nada depende de nuvem; dados e processamento permanecem na máquina do usuário.

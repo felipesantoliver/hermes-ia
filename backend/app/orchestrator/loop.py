@@ -3,20 +3,21 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional, AsyncIterator
 from datetime import datetime
+
 from ..llm import LLMClient
-from ..tools.registry import get_tool, list_tools, to_llm_schema
+from ..tools.registry import get_tool, list_tools
 from ..tools.base import ToolResult
 from ..config import settings
 from ..db import DATA_DIR
 from ..memory.context_builder import build_memory_context
 from ..monitor import get_monitor, HEAVY_TOOL_NAMES
 from .analyst import AnalystOrchestrator
+from .planner import Planner, Plan, PlanStep
 
 logger = logging.getLogger(__name__)
 
 RESOURCE_PRESSURE_MESSAGE = "Recursos escassos, resposta pode demorar"
 
-# Nomes de todas as tools disponíveis, exceto web_search (que é condicional)
 DEFAULT_TOOLS = [
     "read_file",
     "run_python",
@@ -29,17 +30,21 @@ DEFAULT_TOOLS = [
 
 
 class AgentLoop:
-    def __init__(self, llm_client: LLMClient, max_iterations: int = 6, analyst_max_iterations: int = 12, engineer_max_iterations: int = 4):
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        max_iterations: int = 6,
+        analyst_max_iterations: int = 12,
+        engineer_max_iterations: int = 4
+    ):
         self.llm = llm_client
         self.max_iterations = max_iterations
         self.analyst_max_iterations = analyst_max_iterations
         self.engineer_max_iterations = engineer_max_iterations
+        self.planner = Planner(llm_client)
 
     # ------------------------------------------------------------------
-    # Setup compartilhado entre run() e run_stream(): monta o system prompt
-    # com instruções de tools e injeta a memória. Retorna a lista de
-    # mensagens pronta e a referência à mensagem de sistema (para o modo
-    # analista poder ler o conteúdo base).
+    # Setup compartilhado: monta system prompt com tools e memória
     # ------------------------------------------------------------------
     def _prepare_conversation(
         self,
@@ -51,15 +56,10 @@ class AgentLoop:
     ) -> List[Dict[str, str]]:
         conv = messages.copy()
 
-        # Inserir/atualizar system prompt com informações sobre tools.
-        # Pulamos isso em modo analista: o AnalystOrchestrator usa seu próprio
-        # protocolo (analyst_system.txt + blocos de código para verificação),
-        # e misturar as duas instruções JSON confunde o modelo local.
         sys_msg = next((m for m in conv if m["role"] == "system"), None)
         if mode != "analyst":
-            # Determinar quais tools serão listadas
             if enabled_tools is None:
-                tool_names = [t.name for t in list_tools()]  # todas
+                tool_names = [t.name for t in list_tools()]
             else:
                 tool_names = [t for t in enabled_tools if t in [t.name for t in list_tools()]]
 
@@ -83,9 +83,7 @@ class AgentLoop:
             sys_msg = {"role": "system", "content": ""}
             conv.insert(0, sys_msg)
 
-        # Injetar memória (arquitetural > conversacional > código), respeitando
-        # memory_scope do projeto e o disjuntor use_saved_memory do perfil.
-        # Passamos a mensagem do usuário para ativar RAG, se for o caso.
+        # Injetar memória (com RAG)
         user_message = next((m["content"] for m in reversed(conv) if m["role"] == "user"), None)
         try:
             memory_block = build_memory_context(
@@ -102,16 +100,14 @@ class AgentLoop:
         return conv
 
     # ------------------------------------------------------------------
-    # Monitoramento de recursos: decide se uma tool pesada deve ser pausada.
-    # Compartilhado entre run() e run_stream().
+    # Execução de tool com verificação de pressão
     # ------------------------------------------------------------------
     @staticmethod
-    def _resolve_tool_result(tool_name: str, params: Dict[str, Any], enabled_tools: Optional[List[str]] = None) -> ToolResult:
-        """Executa a tool normalmente, a menos que seja uma tool pesada e o
-        monitor de recursos esteja sinalizando pressão — nesse caso, a
-        execução é pausada e o LLM recebe um erro claro em vez do resultado,
-        podendo decidir como prosseguir (ex: tentar de novo mais tarde,
-        avisar o usuário). Também verifica se a tool está habilitada."""
+    def _resolve_tool_result(
+        tool_name: str,
+        params: Dict[str, Any],
+        enabled_tools: Optional[List[str]] = None
+    ) -> ToolResult:
         if enabled_tools is not None and tool_name not in enabled_tools:
             return ToolResult(
                 success=False,
@@ -130,6 +126,212 @@ class AgentLoop:
             return ToolResult(success=False, error=f"Ferramenta '{tool_name}' não encontrada.")
         return tool.run(**params)
 
+    # ------------------------------------------------------------------
+    # Execução de um plano (modo não‑streaming)
+    # ------------------------------------------------------------------
+    def _execute_plan(
+        self,
+        plan: Plan,
+        conv: List[Dict[str, str]],
+        project_id: Optional[str],
+        chat_id: Optional[str],
+        mode: Optional[str],
+        enabled_tools: List[str],
+        max_iter: int,
+        llm_model: str,
+    ) -> str:
+        """Executa os passos do plano sequencialmente. Retorna a resposta final."""
+        final_parts = []
+
+        while not plan.all_done():
+            step = plan.get_next_step()
+            if step is None:
+                # Nenhum passo disponível (talvez todos em espera por dependências não satisfeitas)
+                break
+
+            step.status = "in_progress"
+            logger.info(f"Executando passo: {step.description}")
+
+            if step.tool:
+                # Executa a tool definida no plano
+                result = self._resolve_tool_result(step.tool, step.params, enabled_tools)
+                if result.success:
+                    step.status = "done"
+                    step.result = result.data
+                    final_parts.append(f"[Passo concluído] {step.description}\nResultado: {result.data}")
+                else:
+                    step.status = "failed"
+                    step.error = result.error
+                    # Tenta replanejar
+                    logger.warning(f"Passo falhou: {step.error}. Replanejando...")
+                    plan = self.planner.replan(
+                        plan,
+                        plan.current_step_index,
+                        step.error,
+                        conv[-1]["content"],
+                        context="Erro durante execução do plano."
+                    )
+                    # Reinicia o loop
+                    continue
+            else:
+                # Passo sem tool: chama o LLM para gerar conteúdo
+                prompt = f"Execute o seguinte passo do plano: {step.description}\nContexto: {conv[-1]['content']}"
+                try:
+                    response = self.llm.generate(
+                        messages=conv + [{"role": "user", "content": prompt}],
+                        max_tokens=1024,
+                        temperature=0.3,
+                        model=llm_model,
+                    )
+                    step.status = "done"
+                    step.result = response
+                    final_parts.append(f"[Passo concluído] {step.description}\n{response}")
+                except Exception as e:
+                    step.status = "failed"
+                    step.error = str(e)
+                    logger.warning(f"Passo falhou: {e}. Replanejando...")
+                    plan = self.planner.replan(
+                        plan,
+                        plan.current_step_index,
+                        str(e),
+                        conv[-1]["content"],
+                        context="Erro durante execução do passo."
+                    )
+                    continue
+
+        if not final_parts:
+            return "Nenhum passo foi executado com sucesso."
+
+        # Monta a resposta final a partir dos resultados dos passos
+        final_response = "\n\n".join(final_parts)
+        return final_response
+
+    # ------------------------------------------------------------------
+    # Execução de um plano com streaming
+    # ------------------------------------------------------------------
+    async def _execute_plan_stream(
+        self,
+        plan: Plan,
+        conv: List[Dict[str, str]],
+        project_id: Optional[str],
+        chat_id: Optional[str],
+        mode: Optional[str],
+        enabled_tools: List[str],
+        max_iter: int,
+        llm_model: str,
+        show_thinking: bool,
+    ) -> AsyncIterator[Dict[str, str]]:
+        """Executa o plano emitindo eventos SSE para o frontend."""
+
+        # Emite o plano completo no início
+        plan_data = {
+            "steps": [
+                {
+                    "index": i,
+                    "description": s.description,
+                    "tool": s.tool,
+                    "status": s.status,
+                }
+                for i, s in enumerate(plan.steps)
+            ]
+        }
+        yield {"event": "plan", "data": plan_data}
+
+        while not plan.all_done():
+            step = plan.get_next_step()
+            if step is None:
+                break
+
+            step.status = "in_progress"
+            yield {"event": "step_start", "data": {"index": plan.current_step_index, "description": step.description}}
+
+            if show_thinking:
+                yield {"event": "thinking", "data": f"Executando passo: {step.description}"}
+
+            if step.tool:
+                result = self._resolve_tool_result(step.tool, step.params, enabled_tools)
+                if result.success:
+                    step.status = "done"
+                    step.result = result.data
+                    yield {"event": "step_progress", "data": {"index": plan.current_step_index, "status": "done", "output": result.data}}
+                    if show_thinking:
+                        yield {"event": "thinking", "data": f"Passo concluído: {step.description}"}
+                else:
+                    step.status = "failed"
+                    step.error = result.error
+                    yield {"event": "step_failed", "data": {"index": plan.current_step_index, "error": result.error}}
+                    # Replaneja
+                    plan = self.planner.replan(
+                        plan,
+                        plan.current_step_index,
+                        result.error,
+                        conv[-1]["content"],
+                        context="Erro durante execução do plano."
+                    )
+                    # Emite novo plano replanejado
+                    new_plan_data = {
+                        "steps": [
+                            {"index": i, "description": s.description, "tool": s.tool, "status": s.status}
+                            for i, s in enumerate(plan.steps)
+                        ]
+                    }
+                    yield {"event": "plan", "data": new_plan_data}
+                    continue
+            else:
+                # Passo sem tool: chama o LLM
+                prompt = f"Execute o seguinte passo do plano: {step.description}\nContexto: {conv[-1]['content']}"
+                try:
+                    # Para streaming, usamos generate_stream para obter tokens
+                    full_response = ""
+                    async for token in self.llm.generate_stream(
+                        messages=conv + [{"role": "user", "content": prompt}],
+                        max_tokens=1024,
+                        temperature=0.3,
+                        model=llm_model,
+                    ):
+                        full_response += token
+                        # Emite token como parte do passo
+                        yield {"event": "step_progress", "data": {"index": plan.current_step_index, "status": "in_progress", "token": token}}
+                    step.status = "done"
+                    step.result = full_response
+                    yield {"event": "step_progress", "data": {"index": plan.current_step_index, "status": "done", "output": full_response}}
+                    if show_thinking:
+                        yield {"event": "thinking", "data": f"Passo concluído: {step.description}"}
+                except Exception as e:
+                    step.status = "failed"
+                    step.error = str(e)
+                    yield {"event": "step_failed", "data": {"index": plan.current_step_index, "error": str(e)}}
+                    plan = self.planner.replan(
+                        plan,
+                        plan.current_step_index,
+                        str(e),
+                        conv[-1]["content"],
+                        context="Erro durante execução do passo."
+                    )
+                    # Emite novo plano replanejado
+                    new_plan_data = {
+                        "steps": [
+                            {"index": i, "description": s.description, "tool": s.tool, "status": s.status}
+                            for i, s in enumerate(plan.steps)
+                        ]
+                    }
+                    yield {"event": "plan", "data": new_plan_data}
+                    continue
+
+        # Quando todos os passos estiverem concluídos, monta a resposta final
+        final_parts = []
+        for s in plan.steps:
+            if s.status == "done" and s.result:
+                final_parts.append(f"[{s.description}]\n{s.result}")
+        if final_parts:
+            final_text = "\n\n".join(final_parts)
+            yield {"event": "token", "data": final_text}
+        else:
+            yield {"event": "token", "data": "Nenhum passo foi executado com sucesso."}
+
+    # ------------------------------------------------------------------
+    # Método run (não‑streaming)
+    # ------------------------------------------------------------------
     async def run(
         self,
         messages: List[Dict[str, str]],
@@ -139,37 +341,37 @@ class AgentLoop:
         agent_type: Optional[str] = None,
         web_search: bool = False,
     ) -> str:
-        """
-        Executa o loop do agente (modo não-streaming):
-        1. Envia mensagens para o LLM, incluindo a descrição das tools disponíveis.
-        2. Se o LLM pedir uma tool, executa e adiciona o resultado ao histórico.
-        3. Repete até resposta final ou limite de iterações.
-        """
-        # Definir quais tools estão habilitadas
         enabled_tools = DEFAULT_TOOLS.copy()
         if web_search:
             enabled_tools.append("web_search")
 
         conv = self._prepare_conversation(messages, project_id, chat_id, mode, enabled_tools)
 
-        # Modo Analista: processo rigoroso de decomposição, múltiplos
-        # candidatos, juiz, verificação por tools e checklists de domínio.
-        # Troca latência por qualidade, sem depender de um modelo maior.
+        # Modo Analista
         if mode == "analyst":
-            analyst = AnalystOrchestrator(llm_client=self.llm, max_iterations=self.analyst_max_iterations)
+            analyst = AnalystOrchestrator(
+                llm_client=self.llm,
+                max_iterations=self.analyst_max_iterations,
+                planner=self.planner
+            )
             return analyst.run(messages=conv, project_id=project_id, chat_id=chat_id)
 
-        # Modo engenheiro: usa o modelo local maior (opcional), se
-        # configurado; caso contrário, o LLMClient já faz fallback para o
-        # modelo padrão internamente (ver LLMClient._resolve_model).
         llm_model = "engineer" if mode == "engineer" else "default"
         max_iter = self.engineer_max_iterations if mode == "engineer" else self.max_iterations
 
-        # Loop principal
+        # Planejamento multi‑step para tarefas complexas
+        user_message = next((m["content"] for m in reversed(conv) if m["role"] == "user"), "")
+        if Planner.is_complex_task(user_message):
+            logger.info("Tarefa complexa detectada. Gerando plano...")
+            plan = self.planner.generate_plan(user_message, context=f"Projeto: {project_id or 'Nenhum'}")
+            if len(plan.steps) > 1:
+                # Executa o plano
+                return self._execute_plan(plan, conv, project_id, chat_id, mode, enabled_tools, max_iter, llm_model)
+
+        # Loop tradicional (sem plano ou plano de um passo)
         iteration = 0
         while iteration < max_iter:
             iteration += 1
-            # Chamar LLM
             try:
                 response = self.llm.generate(
                     messages=conv,
@@ -181,48 +383,27 @@ class AgentLoop:
                 logger.error(f"Erro no LLM: {e}")
                 return f"Erro interno: {str(e)}"
 
-            # Tentar interpretar como JSON (tool call)
+            # Tentar interpretar como tool call
             try:
                 data = json.loads(response)
                 if "tool" in data and "parameters" in data:
                     tool_name = data["tool"]
                     params = data["parameters"]
-                    result: ToolResult = self._resolve_tool_result(tool_name, params, enabled_tools)
-                    # Adicionar resultado ao histórico
+                    result = self._resolve_tool_result(tool_name, params, enabled_tools)
                     conv.append({"role": "assistant", "content": response})
                     conv.append({
                         "role": "user",
                         "content": f"Resultado da ferramenta {tool_name}: {result.data if result.success else f'Erro: {result.error}'}"
                     })
-                    continue  # volta ao início do loop para nova iteração
+                    continue
             except json.JSONDecodeError:
-                # Não é JSON, resposta final
                 self._log_conversation(chat_id, project_id, conv, response)
                 return response
 
-        # Se chegou aqui, excedeu iterações
         return "Número máximo de iterações excedido. Por favor, refine sua pergunta."
 
     # ------------------------------------------------------------------
-    # Versão streaming: mesmo protocolo/loop de tools, mas a última
-    # iteração (a que não é uma tool call) tem seus tokens emitidos em
-    # tempo real, conforme chegam do servidor LLM.
-    #
-    # Formato de saída: cada item gerado é um dict {"event": ..., "data": ...}
-    # - {"event": "token", "data": "<fragmento de texto>"}: fragmento da
-    #   resposta final, para acumular e exibir incrementalmente.
-    # - {"event": "system", "data": "<mensagem>"}: aviso do sistema (ex:
-    #   recursos sob pressão), a ser exibido separadamente (ex: notificação
-    #   nativa no navegador), NUNCA concatenado à resposta do Hermes.
-    #
-    # Como o protocolo de tool call é "responda com um JSON", não dá para
-    # saber de antemão se uma iteração vai virar tool call ou resposta
-    # final. Estratégia: consumimos os primeiros caracteres do stream; se,
-    # ignorando espaços em branco, a resposta começa com '{', tratamos como
-    # possível tool call e NÃO emitimos nada ao usuário até o fim dessa
-    # iteração (ela é resolvida internamente, como no modo não-streaming).
-    # Caso contrário, é uma resposta final e cada token é repassado assim
-    # que chega.
+    # Método run_stream
     # ------------------------------------------------------------------
     async def run_stream(
         self,
@@ -234,15 +415,6 @@ class AgentLoop:
         show_thinking: bool = False,
         web_search: bool = False,
     ) -> AsyncIterator[Dict[str, str]]:
-        """Além dos eventos "token"/"system" já existentes, quando
-        show_thinking=True este gerador também emite eventos
-        {"event": "thinking", "data": "<narrativa em linguagem natural>"}
-        para cada etapa interna relevante (decomposição, tool calls,
-        seleção de agente, etc.), narrando em tempo real o que hoje só ia
-        para os logs JSON. É só narrativa — nunca é concatenada à resposta
-        final do Hermes.
-        """
-        # Definir quais tools estão habilitadas
         enabled_tools = DEFAULT_TOOLS.copy()
         if web_search:
             enabled_tools.append("web_search")
@@ -262,8 +434,6 @@ class AgentLoop:
             else:
                 yield thought("Selecionando o agente adequado para a mensagem…")
 
-        # Aviso único de recursos sob pressão por chamada (evita repetir o
-        # aviso a cada iteração do loop caso a pressão persista).
         pressure_warned = False
         if get_monitor().is_under_pressure():
             pressure_warned = True
@@ -271,34 +441,43 @@ class AgentLoop:
             if show_thinking:
                 yield thought("Recursos (RAM/CPU) sob pressão — tools pesadas podem ser pausadas.")
 
-        # Modo Analista: o processo de decomposição/múltiplos candidatos/juiz
-        # roda por dentro de várias iterações e só produz o texto final ao
-        # fim de tudo, então streaming token a token não se aplica. Mantemos
-        # a rota /chat/stream funcional mesmo assim, emitindo a resposta
-        # final como um único evento.
+        # Modo Analista
         if mode == "analyst":
             if show_thinking:
                 yield thought("Decompondo o problema em subtarefas…")
                 yield thought("Gerando soluções candidatas e aplicando o juiz interno…")
                 yield thought("Verificando resultados com as tools disponíveis…")
-            analyst = AnalystOrchestrator(llm_client=self.llm, max_iterations=self.analyst_max_iterations)
+            analyst = AnalystOrchestrator(
+                llm_client=self.llm,
+                max_iterations=self.analyst_max_iterations,
+                planner=self.planner
+            )
             final_text = analyst.run(messages=conv, project_id=project_id, chat_id=chat_id)
             if show_thinking:
                 yield thought("Escolhendo a melhor abordagem entre os candidatos avaliados…")
             yield {"event": "token", "data": final_text}
             return
 
-        # Modo engenheiro: usa o modelo local maior (opcional), se
-        # configurado; caso contrário, o LLMClient já faz fallback para o
-        # modelo padrão internamente (ver LLMClient._resolve_model).
         llm_model = "engineer" if mode == "engineer" else "default"
         max_iter = self.engineer_max_iterations if mode == "engineer" else self.max_iterations
 
+        # Planejamento multi‑step para tarefas complexas (apenas se não for analyst)
+        user_message = next((m["content"] for m in reversed(conv) if m["role"] == "user"), "")
+        if Planner.is_complex_task(user_message):
+            logger.info("Tarefa complexa detectada. Gerando plano com streaming...")
+            plan = self.planner.generate_plan(user_message, context=f"Projeto: {project_id or 'Nenhum'}")
+            if len(plan.steps) > 1:
+                async for event in self._execute_plan_stream(
+                    plan, conv, project_id, chat_id, mode, enabled_tools, max_iter, llm_model, show_thinking
+                ):
+                    yield event
+                return
+
+        # Loop tradicional com streaming
         iteration = 0
         while iteration < max_iter:
             iteration += 1
 
-            # Se a pressão surgiu no meio do loop (ainda não avisada), avisa agora.
             if not pressure_warned and get_monitor().is_under_pressure():
                 pressure_warned = True
                 yield {"event": "system", "data": RESOURCE_PRESSURE_MESSAGE}
@@ -321,7 +500,7 @@ class AgentLoop:
                 return
 
             buffer = ""
-            is_tool_call: Optional[bool] = None  # None = ainda indeterminado
+            is_tool_call: Optional[bool] = None
 
             try:
                 for token in token_iter:
@@ -331,7 +510,6 @@ class AgentLoop:
                         if stripped:
                             is_tool_call = stripped.startswith("{")
                     if is_tool_call is False:
-                        # Resposta final sendo construída: repassa em tempo real
                         yield {"event": "token", "data": token}
             except Exception as e:
                 logger.error(f"Erro durante streaming do LLM: {e}")
@@ -341,9 +519,6 @@ class AgentLoop:
             response = buffer
 
             if is_tool_call:
-                # Tenta interpretar como tool call. Se não for JSON válido,
-                # cai para resposta final (não foi emitida ainda, então
-                # emitimos de uma vez).
                 try:
                     data = json.loads(response)
                 except json.JSONDecodeError:
@@ -356,7 +531,7 @@ class AgentLoop:
                     params = data["parameters"]
                     if show_thinking:
                         yield thought(f"Executando a ferramenta \"{tool_name}\"…")
-                    result: ToolResult = self._resolve_tool_result(tool_name, params, enabled_tools)
+                    result = self._resolve_tool_result(tool_name, params, enabled_tools)
                     if show_thinking:
                         yield thought(
                             f"Resultado de \"{tool_name}\": sucesso." if result.success
@@ -367,22 +542,18 @@ class AgentLoop:
                         "role": "user",
                         "content": f"Resultado da ferramenta {tool_name}: {result.data if result.success else f'Erro: {result.error}'}"
                     })
-                    continue  # próxima iteração do loop
+                    continue
                 else:
-                    # Era um JSON, mas não no formato de tool call esperado;
-                    # trata como resposta final (ainda não emitida).
                     self._log_conversation(chat_id, project_id, conv, response)
                     yield {"event": "token", "data": response}
                     return
             else:
-                # Resposta final: já foi transmitida token a token acima.
                 self._log_conversation(chat_id, project_id, conv, response)
                 return
 
         yield {"event": "token", "data": "Número máximo de iterações excedido. Por favor, refine sua pergunta."}
 
     def _log_conversation(self, chat_id, project_id, messages, final_response):
-        """Salva log em JSON lines."""
         log_dir = Path(DATA_DIR) / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         if project_id:

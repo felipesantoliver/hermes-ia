@@ -1,6 +1,7 @@
 /* ===================== LÓGICA DO CHAT ===================== */
 /* Responsabilidade: gerenciar envio de mensagens, integração com backend,
-   indicador de "digitando", upload de arquivos e preview. */
+   indicador de "digitando", upload de arquivos, preview, e renderização
+   de plano multi‑step (V2.2). */
 
 const msgCol = document.getElementById('msg-col');
 const messagesEl = document.getElementById('messages');
@@ -8,6 +9,7 @@ const input = document.getElementById('msg-input');
 const sendBtn = document.getElementById('send-btn');
 
 let typingIndicator = null;
+let planCard = null; // referência ao card do plano ativo
 
 /**
  * Adiciona uma mensagem na conversa.
@@ -76,9 +78,7 @@ function showTypingIndicator() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-/** Mostra "Hermes está analisando profundamente..." com barra indeterminada,
- * usado quando o modo analista está ativo. Reaproveita o mesmo slot do
- * indicador de digitação (typingIndicator), pois é removido do mesmo jeito. */
+/** Mostra "Hermes está analisando profundamente..." com barra indeterminada */
 function showAnalystIndicator() {
   removeTypingIndicator();
   const msg = document.createElement('div');
@@ -125,7 +125,6 @@ function createThinkingBlock(bubbleWrap) {
   details.appendChild(summary);
   details.appendChild(pre);
 
-  // Insere antes da bolha de resposta (bubbleWrap contém meta + bubble).
   const bubbleEl = bubbleWrap.querySelector('.bubble');
   bubbleWrap.insertBefore(details, bubbleEl);
 
@@ -162,18 +161,113 @@ function createHermesBubble() {
   msgCol.appendChild(msg);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 
-  bubble._wrap = bubbleWrap; // usado por createThinkingBlock para inserir o bloco antes da bolha
+  bubble._wrap = bubbleWrap;
   return bubble;
 }
 
 /**
- * Conecta em POST /chat/stream e vai preenchendo a bolha do Hermes
- * incrementalmente, token a token, conforme os eventos SSE chegam.
- *
- * Retorna o texto final completo em caso de sucesso, ou `null` se a
- * conexão falhou ANTES de qualquer token ser recebido (nesse caso o
- * chamador pode tentar o endpoint tradicional /chat/ como fallback, sem
- * duplicar mensagens na tela).
+ * Renderiza o card do plano (expansível) na conversa.
+ * @param {Array} steps - lista de passos { index, description, tool, status }
+ */
+function renderPlanCard(steps) {
+  // Remove card antigo se existir
+  if (planCard) {
+    planCard.remove();
+    planCard = null;
+  }
+
+  const msg = document.createElement('div');
+  msg.className = 'msg hermes';
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar hermes';
+  const bubbleWrap = document.createElement('div');
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta';
+  meta.textContent = 'Hermes — Plano de ação';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble plan-card';
+  bubble.style.padding = '12px 16px';
+  bubble.style.background = 'var(--bg-elevated)';
+  bubble.style.borderRadius = '12px';
+  bubble.style.border = '1px solid var(--line)';
+
+  let html = `<div style="font-weight:600; margin-bottom:8px;">📋 Plano de ação</div><ul style="list-style:none; padding:0; margin:0;">`;
+  steps.forEach((step, idx) => {
+    const statusClass = step.status === 'done' ? 'done' : (step.status === 'in_progress' ? 'in-progress' : 'pending');
+    const checked = step.status === 'done' ? 'checked' : '';
+    html += `
+      <li class="plan-step" data-index="${idx}" style="display:flex; align-items:center; gap:8px; padding:4px 0; border-bottom:1px solid var(--line);">
+        <input type="checkbox" class="plan-step-checkbox" ${checked} disabled style="accent-color:var(--purple); width:16px; height:16px; flex-shrink:0;">
+        <span class="plan-step-description" style="flex:1; font-size:13px; ${step.status === 'done' ? 'text-decoration:line-through; opacity:0.6;' : ''}">${escapeHtml(step.description)}</span>
+        ${step.tool ? `<span style="font-size:10px; background:var(--bg-panel); padding:2px 8px; border-radius:12px; color:var(--text-low);">🔧 ${escapeHtml(step.tool)}</span>` : ''}
+        ${step.status === 'in_progress' ? `<span style="font-size:11px; color:var(--purple);">⏳ executando...</span>` : ''}
+        ${step.status === 'done' ? `<span style="font-size:11px; color:var(--text-low);">✅ concluído</span>` : ''}
+        ${step.status === 'failed' ? `<span style="font-size:11px; color:#e35b5b;">❌ falhou</span>` : ''}
+      </li>
+    `;
+  });
+  html += `</ul>`;
+  bubble.innerHTML = html;
+  bubbleWrap.appendChild(bubble);
+  msg.appendChild(avatar);
+  msg.appendChild(bubbleWrap);
+  msgCol.appendChild(msg);
+  planCard = msg;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+/**
+ * Atualiza o status de um passo no card do plano.
+ * @param {number} index - índice do passo
+ * @param {string} status - 'pending', 'in_progress', 'done', 'failed'
+ * @param {string} output - saída opcional para exibir
+ */
+function updatePlanStep(index, status, output) {
+  if (!planCard) return;
+  const stepEl = planCard.querySelector(`.plan-step[data-index="${index}"]`);
+  if (!stepEl) return;
+  const checkbox = stepEl.querySelector('.plan-step-checkbox');
+  const desc = stepEl.querySelector('.plan-step-description');
+  const statusSpan = stepEl.querySelector('span:last-child');
+
+  // Atualiza checkbox
+  if (checkbox) {
+    checkbox.checked = (status === 'done');
+  }
+  // Atualiza estilo da descrição
+  if (desc) {
+    desc.style.textDecoration = (status === 'done') ? 'line-through' : 'none';
+    desc.style.opacity = (status === 'done') ? '0.6' : '1';
+  }
+  // Atualiza indicador de status
+  if (statusSpan && !stepEl.querySelector('.plan-step-checkbox')) {
+    // Se houver um span de status, atualiza
+    const oldSpan = stepEl.querySelector('span:last-child');
+    if (oldSpan) {
+      let text = '';
+      if (status === 'in_progress') text = '⏳ executando...';
+      else if (status === 'done') text = '✅ concluído';
+      else if (status === 'failed') text = '❌ falhou';
+      else text = '';
+      oldSpan.textContent = text;
+      oldSpan.style.color = status === 'failed' ? '#e35b5b' : 'var(--text-low)';
+    }
+  }
+  // Se houver saída, mostra como log
+  if (output && status === 'done') {
+    console.log(`Passo ${index} saída:`, output);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+/**
+ * Conecta em POST /chat/stream e processa os eventos SSE.
+ * Agora suporta eventos "plan", "step_start", "step_progress", "step_done", "step_failed".
  */
 async function runStreamingChat(chatPayload) {
   let hermesBubble = null;
@@ -189,12 +283,11 @@ async function runStreamingChat(chatPayload) {
       body: JSON.stringify(chatPayload),
     });
   } catch (networkErr) {
-    // Falha de rede antes de qualquer token: permite fallback silencioso
     return null;
   }
 
   if (!streamRes.ok || !streamRes.body) {
-    return null; // permite fallback para o endpoint tradicional
+    return null;
   }
 
   const reader = streamRes.body.getReader();
@@ -206,7 +299,6 @@ async function runStreamingChat(chatPayload) {
     if (done) break;
     sseBuffer += decoder.decode(value, { stream: true });
 
-    // Eventos SSE são separados por uma linha em branco ("\n\n")
     let sepIndex;
     while ((sepIndex = sseBuffer.indexOf('\n\n')) !== -1) {
       const rawEvent = sseBuffer.slice(0, sepIndex);
@@ -227,6 +319,38 @@ async function runStreamingChat(chatPayload) {
         continue;
       }
 
+      // --- Eventos do plano multi‑step ---
+      if (eventType === 'plan' && data.steps) {
+        // Renderiza o card do plano
+        renderPlanCard(data.steps);
+        continue;
+      }
+      if (eventType === 'step_start' && data.index !== undefined) {
+        // Atualiza passo para "in_progress"
+        updatePlanStep(data.index, 'in_progress', null);
+        continue;
+      }
+      if (eventType === 'step_progress' && data.index !== undefined) {
+        if (data.status === 'done') {
+          updatePlanStep(data.index, 'done', data.output || '');
+          // Se houver token, adiciona à mensagem final
+          if (data.token) {
+            if (!hermesBubble) hermesBubble = createHermesBubble();
+            hermesText += data.token;
+            hermesBubble.textContent = hermesText;
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          }
+        } else if (data.status === 'in_progress' && data.token) {
+          // Atualiza progresso com tokens (pode ser usado para streaming dentro do passo)
+        }
+        continue;
+      }
+      if (eventType === 'step_failed' && data.index !== undefined) {
+        updatePlanStep(data.index, 'failed', data.error || '');
+        continue;
+      }
+
+      // --- Eventos existentes ---
       if (eventType === 'thinking' && typeof data.token === 'string') {
         if (!hermesBubble) hermesBubble = createHermesBubble();
         if (!thinkingPre) thinkingPre = createThinkingBlock(hermesBubble._wrap);
@@ -239,20 +363,17 @@ async function runStreamingChat(chatPayload) {
         hermesBubble.textContent = hermesText;
         messagesEl.scrollTop = messagesEl.scrollHeight;
       } else if (eventType === 'system' && typeof data.message === 'string') {
-        // Aviso do sistema (ex: recursos sob pressão). Nunca entra no
-        // texto da resposta do Hermes — só dispara notificação nativa.
         window.HermesNotifications.notify('Hermes AI', data.message);
       } else if (eventType === 'error') {
         if (!hermesBubble) hermesBubble = createHermesBubble();
         hermesText += `\n❌ ${data.error || 'Falha na comunicação'}`;
         hermesBubble.textContent = hermesText;
       }
-      // evento "done" apenas sinaliza o fim do stream; nada a fazer aqui
+      // evento "done" apenas sinaliza o fim
     }
   }
 
   if (!hermesBubble) {
-    // Stream terminou sem produzir nenhum token: permite fallback
     return null;
   }
 
@@ -308,7 +429,7 @@ async function sendMessageToBackend(userText, mode, projectId) {
       mode: mode || null,
       project_id: projectId || null,
       chat_id: chatId,
-      // Pensamento visível: ativado apenas no modo analista (ou se o usuário quiser, mas removemos o toggle)
+      // Pensamento visível: ativado apenas no modo analista
       show_thinking: mode === 'analyst',
       web_search: !!window.HermesState.webSearchEnabled,
     };

@@ -10,6 +10,7 @@ from ..tools.registry import get_tool
 from ..tools.base import ToolResult
 from ..monitor import get_monitor, HEAVY_TOOL_NAMES
 from ..db import DATA_DIR
+from .planner import Plan, PlanStep
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ CHECKLISTS_DIR = Path(__file__).resolve().parent.parent / "knowledge" / "checkli
 
 ANALYST_SYSTEM_PROMPT_PATH = PROMPTS_DIR / "analyst_system.txt"
 
-MAX_SUBTASKS = 4          # limite prático para caber no orçamento de iterações
-MAX_TOOL_RETRIES = 2       # tentativas extras além da primeira, por subtarefa
+MAX_SUBTASKS = 4
+MAX_TOOL_RETRIES = 2
 
 CODE_FENCE_RE = re.compile(r"```(python|py|bash|sh|shell)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 
@@ -54,8 +55,6 @@ def _select_checklists(task_text: str, checklists: List[Dict[str, Any]]) -> List
 
 
 def _extract_code_block(text: str) -> Optional[Dict[str, str]]:
-    """Procura o primeiro bloco de código cercado por ``` no texto.
-    Retorna {"lang": ..., "code": ...} ou None."""
     match = CODE_FENCE_RE.search(text)
     if not match:
         return None
@@ -65,12 +64,6 @@ def _extract_code_block(text: str) -> Optional[Dict[str, str]]:
 
 
 def should_use_analyst_mode(mode: Optional[str], profile: Optional[Dict[str, Any]]) -> bool:
-    """Decide se o orquestrador deve rodar em modo analista.
-
-    Ativação explícita: mode == "analyst" (chip da UI).
-    Ativação heurística (não altera o chip no frontend, apenas o
-    comportamento interno): personalidade "tecnico" ou content_filter_level >= 3.
-    """
     if mode == "analyst":
         return True
     if not profile:
@@ -84,16 +77,19 @@ def should_use_analyst_mode(mode: Optional[str], profile: Optional[Dict[str, Any
 
 
 class AnalystOrchestrator:
-    """Implementa o processo do Modo Analista: decomposição, múltiplos
-    candidatos, autocrítica, juiz, verificação obrigatória por tools,
-    refinamento e integração global com checklists de domínio."""
-
-    def __init__(self, llm_client, max_iterations: int = 12, engineer_client=None):
+    def __init__(
+        self,
+        llm_client,
+        max_iterations: int = 12,
+        engineer_client=None,
+        planner=None
+    ):
         self.llm = llm_client
         self.engineer_client = engineer_client
         self.max_iterations = max_iterations
         self._iterations_used = 0
         self._log_entries: List[Dict[str, Any]] = []
+        self.planner = planner  # Planejador multi‑step, opcional
 
     # ------------------------------------------------------------------
     # Entrada principal
@@ -103,17 +99,13 @@ class AnalystOrchestrator:
         messages: List[Dict[str, str]],
         project_id: Optional[str] = None,
         chat_id: Optional[str] = None,
+        plan: Optional[Plan] = None,
     ) -> str:
         conv = messages.copy()
         base_system = next((m for m in conv if m["role"] == "system"), None)
         base_system_content = base_system["content"] if base_system else ""
 
         analyst_prompt = _load_analyst_system_prompt()
-        # O prompt do modo analista substitui o system prompt padrão do Hermes
-        # como instrução PRINCIPAL, mas as personalizações de perfil/projeto
-        # (que já estavam em base_system_content, montadas em chat.py) continuam
-        # anexadas, garantindo que tom, piso de segurança e persona do projeto
-        # permaneçam válidos.
         combined_system = analyst_prompt + "\n\n---\n\n" + base_system_content
         analyst_conv = [{"role": "system", "content": combined_system}] + [
             m for m in conv if m["role"] != "system"
@@ -123,7 +115,13 @@ class AnalystOrchestrator:
 
         self._log("start", {"project_id": project_id, "chat_id": chat_id, "task": user_task})
 
-        subtasks = self._decompose(analyst_conv, user_task)
+        # Se um plano foi fornecido (pelo planejador multi‑step), usamos seus passos como subtarefas
+        if plan is not None and len(plan.steps) > 1:
+            subtasks = [step.description for step in plan.steps if step.status != "done"]
+            logger.info(f"Usando plano com {len(subtasks)} subtarefas para o modo analista.")
+        else:
+            subtasks = self._decompose(analyst_conv, user_task)
+
         checklists_all = _load_checklists()
         applicable_checklists = _select_checklists(user_task, checklists_all)
 
@@ -141,7 +139,7 @@ class AnalystOrchestrator:
         return final_text
 
     # ------------------------------------------------------------------
-    # Passo a) Decomposição
+    # Passo a) Decomposição (usada apenas se não houver plano)
     # ------------------------------------------------------------------
     def _decompose(self, conv: List[Dict[str, str]], user_task: str) -> List[str]:
         prompt = (
@@ -162,7 +160,6 @@ class AnalystOrchestrator:
     @staticmethod
     def _parse_json_list(raw: str) -> List[str]:
         text = raw.strip()
-        # Tenta extrair o primeiro array JSON presente na resposta
         match = re.search(r"\[.*\]", text, re.DOTALL)
         candidate = match.group(0) if match else text
         try:
@@ -171,7 +168,6 @@ class AnalystOrchestrator:
                 return [str(item).strip() for item in data if str(item).strip()]
         except json.JSONDecodeError:
             pass
-        # Fallback: uma subtarefa por linha não vazia
         lines = [l.strip("-*• ").strip() for l in text.splitlines() if l.strip()]
         return lines[:MAX_SUBTASKS] if lines else []
 
@@ -186,7 +182,6 @@ class AnalystOrchestrator:
 
         verified, evidence = self._verify_with_tools(subtask, chosen, conv)
         refined = self._refine(conv, subtask, verified, evidence)
-        # Se o refinamento alterou conteúdo executável, verificar de novo
         refined_verified, refined_evidence = self._verify_with_tools(subtask, refined, conv)
 
         evidence_all = evidence + refined_evidence
@@ -255,8 +250,6 @@ class AnalystOrchestrator:
     def _verify_with_tools(
         self, subtask: str, candidate: str, conv: List[Dict[str, str]]
     ) -> Tuple[str, List[str]]:
-        """Se a solução contém código executável, roda via tools existentes.
-        Se falhar, tenta regenerar com o erro como feedback (até MAX_TOOL_RETRIES vezes)."""
         evidence: List[str] = []
         block = _extract_code_block(candidate)
         if not block:
@@ -305,7 +298,6 @@ class AnalystOrchestrator:
             attempt += 1
             if attempt > MAX_TOOL_RETRIES:
                 break
-            # Regenerar com o erro como feedback
             fix_prompt = (
                 f"Subtarefa: {subtask}\n\nA solução a seguir falhou na execução real:\n\n"
                 f"{current_full_text}\n\nErro reportado pela ferramenta:\n{result.error}\n\n"
@@ -320,10 +312,6 @@ class AnalystOrchestrator:
         return current_full_text, evidence
 
     def _run_static_security_scan(self, subtask: str, code: str, lang: str) -> List[str]:
-        """Roda Bandit (Python) ou ShellCheck (shell) sobre o código já
-        verificado como executável. Nunca bloqueia a resposta final: apenas
-        reporta issues como evidência adicional, já que essas ferramentas
-        podem não estar instaladas em todo ambiente de deploy."""
         evidence: List[str] = []
         tool_name = "bandit_scan" if lang in ("python", "py", "") else "shellcheck_scan"
         tool = get_tool(tool_name)
@@ -380,7 +368,6 @@ class AnalystOrchestrator:
             f"Subtarefa: {r['subtask']}\nSolução: {r['solution']}" for r in subtask_results
         )
 
-        # Debate interno Arquiteto x Revisor (scratchpad, nunca exposto ao usuário)
         debate_prompt = (
             f"Tarefa original: {user_task}\n\nSoluções das subtarefas:\n{solutions_block}\n\n"
             "Verifique inconsistências entre as soluções. Depois, simule um debate curto "
