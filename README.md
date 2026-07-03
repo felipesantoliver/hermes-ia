@@ -1,429 +1,333 @@
-# Hermes AI
+# 🧠 Hermes AI
 
-> **Versão atual:** v0.2.0-dev — *Hermes Core (Local Edition)*
-> **Status:** 🚧 MVP concluído | 🟡 V1 em desenvolvimento | 🔵 V2 planejada
+[![Versão](https://img.shields.io/badge/versão-v0.2.0--dev-blue)](https://github.com/felipesantoliver/hermes-ai)
+[![MVP](https://img.shields.io/badge/MVP-concluído-brightgreen)]()
+[![V1](https://img.shields.io/badge/V1-concluída-brightgreen)]()
+[![V2](https://img.shields.io/badge/V2-em%20desenvolvimento-yellow)]()
+[![Licença](https://img.shields.io/badge/licença-MIT-green)](./LICENSE)
+[![Hardware](https://img.shields.io/badge/hardware-AMD%20Ryzen%205%205500%20%7C%20RX%20580%208GB%20%7C%2016GB%20RAM-informational)]()
 
-Assistente pessoal de IA **local-first**, focado em **gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio**.
+**Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
+O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
-O Hermes não é um chatbot — é um **sistema operacional de desenvolvimento assistido por IA**, onde o usuário constrói software, firmware e sistemas com suporte contínuo de um agente inteligente local.
-
----
-
-## Sumário
-
-1. [Visão geral do sistema](#1-visão-geral-do-sistema)
-2. [Núcleo de Inteligência (LLM Core)](#2-núcleo-de-inteligência-llm-core)
-3. [Arquitetura geral](#3-arquitetura-geral)
-4. [Agent Loop (ciclo principal)](#4-agent-loop-ciclo-principal)
-5. [Agentes lógicos](#5-agentes-lógicos-não-instâncias-de-llm)
-6. [Sistema de Tools](#6-sistema-de-tools-execução-externa)
-7. [Gestão de contexto e memória](#7-gestão-de-contexto-e-memória)
-8. [Modo Analista](#8-modo-analista)
-9. [Pensamento Visível](#9-pensamento-visível)
-10. [Princípios fundamentais](#10-princípios-fundamentais)
-11. [Hardware alvo](#11-hardware-alvo)
-12. [Funcionalidades](#12-funcionalidades)
-13. [Roadmap](#13-roadmap)
-14. [Objetivo final](#14-objetivo-final)
-15. [Privacidade](#15-privacidade)
-16. [Hermes vs sistemas tradicionais](#16-hermes-vs-sistemas-tradicionais)
+> **Status:** ✅ MVP concluído | ✅ V1 concluída | 🟡 V2 em desenvolvimento
 
 ---
 
-## 1. Visão geral do sistema
+## 📚 Sumário
 
-O Hermes é um ambiente de desenvolvimento onde:
-
-- projetos são entidades vivas
-- decisões são armazenadas
-- código é iterado continuamente
-- a IA atua como parte do time de engenharia
-
-Ele combina:
-
-- LLM local (núcleo de raciocínio)
-- ferramentas executáveis (tools)
-- memória estruturada por projeto
-- agentes lógicos baseados em contexto
-
-> O objetivo não é gerar respostas — é **resolver problemas de engenharia de forma contínua e incremental**.
+- [Visão Geral](#visão-geral)
+- [Arquitetura](#arquitetura)
+- [Componentes Principais](#componentes-principais)
+- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Como Executar Localmente](#como-executar-localmente)
+- [Funcionalidades](#funcionalidades)
+- [Roadmap](#roadmap)
+- [Princípios Fundamentais](#princípios-fundamentais)
+- [Hardware Alvo](#hardware-alvo)
+- [Privacidade](#privacidade)
+- [Licença](#licença)
 
 ---
 
-## 2. Núcleo de Inteligência (LLM Core)
+## Visão Geral
 
-O Hermes utiliza um único modelo local da família **Qwen 7B–8B (quantizado)** como núcleo de inteligência.
+O Hermes é um ambiente onde **projetos são entidades vivas**, decisões arquiteturais são lembradas, o código é iterado com ferramentas reais e a IA atua como parte do time de engenharia.
 
-### 🎯 Função do núcleo
+- **LLM local** (Qwen 7B–8B quantizado)
+- **Ferramentas executáveis** em sandbox (Python, shell, compilação, análise estática…)
+- **Memória estruturada** por projeto (3 camadas: arquitetural, conversacional, código)
+- **Agentes lógicos** configuráveis (Desenvolvedor, Arquiteto, Firmware, Revisor)
+- **Modo Analista** – verificação rigorosa multi-etapa com o mesmo modelo
+- **Streaming SSE** e **Pensamento Visível** para total transparência
 
-O LLM **não** executa ações diretamente. Ele é responsável por:
-
-- interpretação de intenção
-- decomposição de problemas
-- planejamento de execução
-- geração de código
-- decisão de uso de ferramentas
-- coordenação de agentes lógicos
-
-> O LLM é o "cérebro de decisão", não o executor.
-
-### ⚙️ Características do modelo
-
-| Característica | Valor |
-|---|---|
-| Classe | 7B–8B parâmetros |
-| Execução | Local (llama.cpp / Vulkan) |
-| Quantização | Q4–Q5 (Q6/Q8 opcional no modo analista) |
-| Otimização | Instruções e tool use |
-| Foco | Engenharia + código + raciocínio geral |
-
-### 🧩 Limitações assumidas
-
-O sistema assume explicitamente que o núcleo tem limitações:
-
-- capacidade limitada em raciocínio profundo multi-etapas
-- inconsistência em projetos muito longos
-- necessidade de validação externa via tools
-- não confiabilidade em execução direta de lógica
-
-Essas limitações são corrigidas por arquitetura.
+> O objetivo não é gerar respostas – é **resolver problemas de engenharia de forma contínua e incremental**.
 
 ---
 
-## 3. Arquitetura geral
-
-O Hermes segue uma arquitetura baseada em separação de responsabilidades:
+## Arquitetura
 Usuário
 ↓
-Interface (texto/voz)
+Frontend (SPA vanilla + Three.js)
 ↓
-Orquestrador
+Backend (FastAPI) – /chat, /projects, /chats, /profile, /files, /system
 ↓
-Classificador de intenção (híbrido: embeddings + heurística)
+Orquestrador (AgentLoop) – gerencia o ciclo de raciocínio
 ↓
-Seleção de agente lógico
+Classificador híbrido (embeddings + heurística) – escolhe o agente
 ↓
-LLM Core (Qwen 7B/8B) ← ou modelo engenheiro opcional
+LLM Core (Qwen 7B/8B) – ou modelo Engenheiro opcional
 ↓
-Tools (execução real, sandbox)
+Tools (sandbox) – Python, Shell, arquivos, busca, indexação, firmware…
 ↓
-Memória em 3 camadas + RAG
+Memória (3 camadas + RAG com FAISS para código)
 ↓
-Resposta final (com streaming e pensamento visível opcionais)
+Resposta final (streaming SSE + pensamento visível opcional)
+
+text
+
+### Backend (FastAPI)
+- Rotas organizadas por domínio (chat, projetos, perfil, arquivos, sistema)
+- SQLite com migrações automáticas
+- Cliente LLM compatível com API OpenAI (llama.cpp)
+- Agent Loop com suporte a tools e iterações múltiplas
+- Monitor de recursos em background (RAM/CPU)
+- Log de auditoria de todas as execuções de ferramentas
+
+### Frontend (SPA vanilla)
+- HTML/CSS/JS puro, sem frameworks; Three.js para visualizações 3D
+- Views: Chat, Projetos, Galeria
+- Sidebar com chats fixados, recentes, navegação e mini-esfera 3D reativa
+- Consumo de eventos SSE (`token`, `thinking`, `system`, `error`, `done`)
+- Estado global compartilhado (`HermesState`) e modais auto-save
+
+### LLM Core (Qwen 7B–8B)
+- Modelo local quantizado (Q4–Q5) executado via llama.cpp
+- Responsável por interpretação, planejamento, geração de código e decisão de ferramentas
+- **Modo Engenheiro** opcional: segundo modelo maior, ativável pelo usuário, com fallback automático
+
+---
+
+## Componentes Principais
+
+### Orquestrador e Agent Loop
+O `AgentLoop` (arquivo `loop.py`):
+1. Prepara o prompt (sistema + tools + memória)
+2. Chama o LLM (streaming ou não)
+3. Se a resposta for uma chamada de ferramenta (JSON), executa e realimenta o resultado
+4. Itera até obter resposta final ou atingir o limite
+5. No **Modo Analista**, delega para o `AnalystOrchestrator`
+
+### Agentes Lógicos
+Configurações de comportamento definidas por system prompt, ferramentas e recorte de contexto.  
+Selecionados por um classificador híbrido (embeddings + heurística).
+
+| Agente        | Responsabilidade |
+|---------------|------------------|
+| Desenvolvedor | Implementa, refatora e depura código |
+| Arquiteto     | Estrutura sistemas, planeja arquitetura |
+| Firmware      | Microcontroladores, registradores, periféricos (ESP32, STM32…) |
+| Revisor       | Qualidade, segurança e conformidade |
+| Analista*     | Loop rigoroso com múltiplos candidatos, juiz e checklists |
+| Engenheiro*   | Usa modelo maior opcional para raciocínio profundo |
+
+*Modos especiais, não agentes fixos.
+
+### Ferramentas (Tools)
+Executadas em sandbox com restrições rigorosas:
+
+- **RunPythonTool**: sem rede, limite de 128 MB RAM, timeout configurável
+- **RunShellTool**: allowlist de comandos seguros, bloqueio de metacaracteres
+- **ReadFileTool**: leitura segura dentro do projeto, prevenção de path traversal
+- **WebSearchTool**: integração com SearXNG local
+- **CodebaseIndexTool**: indexação FAISS de funções/classes (preparação RAG)
+- **FirmwareTool**: detecção e compilação de projetos C/C++ com PlatformIO
+- **BanditTool / ShellCheckTool**: análise estática de segurança
+- **Log de auditoria**: todas as execuções registradas (`tool_audit.jsonl`)
+
+### Memória
+Organizada em 3 camadas com prioridade de inclusão no contexto:
+1. **Arquitetural** – decisões de design, padrões
+2. **Conversacional** – resumos compactos de conversas anteriores
+3. **Código** – notas sobre arquivos e trechos
+
+Escopos configuráveis por projeto: `isolated`, `isolated_read_external` ou `none`.  
+O usuário pode desabilitar a memória globalmente.
+
+### Modo Analista
+Ativado manualmente ou automaticamente para contextos de alto rigor. Processo:
+1. Decomposição da tarefa em subtarefas independentes
+2. Para cada subtarefa: 3 candidatos, auto-crítica, juiz, verificação obrigatória com ferramentas, refinamento
+3. Integração global com debate interno (Arquiteto vs. Revisor) e checklists de domínio
+4. Resposta final com resumo, solução e evidências
+
+### Pensamento Visível
+Quando ativado, o backend emite eventos `thinking` (SSE) com a narrativa do raciocínio. O frontend exibe isso em um bloco expansível acima da resposta final.
+
+### Streaming SSE
+Endpoint `/chat/stream` emite eventos: `token`, `thinking`, `system`, `error`, `done`.  
+O frontend renderiza a resposta em tempo real e destaca avisos do sistema.
+
+### Monitor de Recursos
+Thread em background que mede RAM/CPU a cada 5s.  
+Quando o uso de RAM ultrapassa 80% do limite configurado, o sistema entra em `under_pressure` e pausa ferramentas pesadas automaticamente.
+
+### Perfil e Configurações
+- **Perfil**: nome, apelido do Hermes, personalidade, filtro de conteúdo, memória, pensamento visível, etc.
+- **Configurações**: tema, idioma, notificações, limite de RAM, modo engenheiro, ações destrutivas.
+
+---
+
+## Estrutura do Projeto
+hermes-ai/
+├── backend/
+│ ├── app/
+│ │ ├── main.py # FastAPI – ponto de entrada
+│ │ ├── config.py # Configurações globais
+│ │ ├── db.py # SQLite + migrações
+│ │ ├── llm.py # Cliente HTTP para llama.cpp
+│ │ ├── monitor.py # Monitor de RAM/CPU
+│ │ ├── chat.py # Rotas /chat (stream e não-stream)
+│ │ ├── chats.py # CRUD de chats
+│ │ ├── projects.py # CRUD de projetos e arquivos
+│ │ ├── files.py # Upload/download de arquivos
+│ │ ├── profile.py # Perfil do usuário
+│ │ ├── profile_prompt.py # System prompt a partir do perfil
+│ │ ├── system.py # Status do sistema e pré-requisitos
+│ │ ├── orchestrator/ # Núcleo da lógica do agente
+│ │ │ ├── loop.py # AgentLoop principal
+│ │ │ ├── analyst.py # Modo Analista
+│ │ │ ├── router.py # Classificador híbrido
+│ │ │ └── context_builder.py # Montagem do contexto/memória
+│ │ ├── memory/ # Acesso à memória (3 camadas)
+│ │ │ ├── store.py
+│ │ │ └── init.py
+│ │ ├── tools/ # Ferramentas executáveis
+│ │ │ ├── base.py # Classe base Tool + ToolResult
+│ │ │ ├── registry.py # Registro e schema OpenAI
+│ │ │ ├── read_file.py
+│ │ │ ├── run_python.py # Sandbox Python
+│ │ │ ├── run_shell.py # Sandbox shell
+│ │ │ ├── web_search.py # SearXNG
+│ │ │ ├── codebase_index.py # Indexação FAISS
+│ │ │ ├── firmware.py # PlatformIO
+│ │ │ ├── security_static.py # Bandit/ShellCheck
+│ │ │ ├── audit.py # Log de auditoria
+│ │ │ └── indexer.py # Extração de unidades de código
+│ │ ├── prompts/ # System prompts (ex: analista)
+│ │ └── knowledge/checklists/ # Checklists de domínio (JSON)
+│ ├── data/ # Dados persistentes (SQLite, logs, índices)
+│ ├── scripts/ # Scripts de teste e validação
+│ ├── requirements.txt
+│ └── README.md
+├── frontend/
+│ ├── index.html # Estrutura da SPA
+│ ├── css/ # Estilos modulares
+│ │ ├── theme.css
+│ │ ├── layout.css
+│ │ ├── chat.css
+│ │ ├── projects.css
+│ │ ├── gallery.css
+│ │ ├── settings.css
+│ │ └── profile.css
+│ └── js/ # Módulos JavaScript
+│ ├── state.js # Estado global
+│ ├── ui.js # UI (sidebar, tema, input)
+│ ├── chat.js # Lógica do chat e streaming
+│ ├── chats.js # Sidebar e lista de chats
+│ ├── projects.js # Gestão de projetos
+│ ├── gallery.js # Galeria de arquivos
+│ ├── settings.js # Configurações
+│ ├── profile.js # Perfil do usuário
+│ ├── notifications.js # Notificações push
+│ └── spheres.js # Three.js (intro e mini-esfera)
+├── .gitignore
+└── README.md
 
 text
 
 ---
 
-## 4. Agent Loop (ciclo principal)
+## Como Executar Localmente
 
-O sistema opera em ciclos iterativos:
+### Pré-requisitos
+- **Python 3.10+** com pip
+- **Servidor llama.cpp** rodando localmente (ou compatível com API OpenAI)
+- **Node.js** (opcional, para desenvolvimento do frontend – a SPA é estática)
+- **SearXNG** (opcional, para busca web)
+- **PlatformIO** (opcional, para compilação de firmware)
+- **Bandit / ShellCheck** (opcionais, para análise estática)
 
-1. Interpretar entrada
-2. Planejar ação
-3. Executar (LLM ou tool)
-4. Observar resultado
-5. Corrigir ou finalizar
+### Passos
 
-### 🔥 Propriedades do loop
+1. **Clone o repositório**
+   ```bash
+   git clone https://github.com/felipesantoliver/hermes-ai.git
+   cd hermes-ai
+Configure o backend
 
-- pode iterar múltiplas vezes
-- valida resultados com tools
-- reduz alucinação via feedback real
-- transforma o LLM em sistema "testável"
-- no modo analista, o loop é intensificado (até 12 iterações, múltiplos candidatos, auto-crítica, juiz, checklists)
+bash
+cd backend
+python -m venv venv
+source venv/bin/activate   # Linux/Mac
+# .\venv\Scripts\activate no Windows
+pip install -r requirements.txt
+Configure o LLM
 
----
+Baixe um modelo Qwen 7B/8B quantizado (ex: Qwen2.5-7B-Instruct-Q4_K_M.gguf)
 
-## 5. Agentes lógicos (não instâncias de LLM)
+Coloque em backend/models/hermes-core.gguf ou ajuste o caminho em config.py
 
-Os agentes são **configurações de comportamento**, não modelos separados.
+Inicie o servidor llama.cpp:
 
-Cada agente é definido por:
+bash
+llama-server -m models/hermes-core.gguf --host 0.0.0.0 --port 8080
+Inicie o backend
 
-- system prompt especializado
-- conjunto de tools disponíveis
-- recorte de contexto
-- regras de atuação
+bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+Sirva o frontend
 
-### 📌 Exemplos de agentes
+bash
+cd frontend
+python -m http.server 3000
+Acesse http://localhost:3000 no navegador.
 
-| Agente | Responsabilidade |
-|---|---|
-| Orquestrador | Coordena decisões e fluxo geral |
-| Arquiteto | Estrutura sistemas e módulos |
-| Desenvolvedor | Implementa e refatora código |
-| Firmware | Baixo nível, registradores, BLE |
-| Revisor | Valida qualidade e segurança |
-| Analista (modo) | Loop rigoroso de verificação multi-etapa |
-| Engenheiro (modo) | Usa modelo maior opcional com menos iterações |
-| Android | Desenvolvimento Android (Kotlin/Java) |
+Funcionalidades
+Funcionalidade	Descrição
+💬 Chat	Envio de mensagens com streaming SSE, fallback para resposta completa e anexos.
+📁 Projetos	CRUD completo; cada projeto possui instruções, persona, arquivos, escopo de memória e chats associados.
+🗂 Sidebar	Chats fixados, recentes, busca, menu de contexto (fixar, renomear, mover, arquivar, excluir).
+🖼 Galeria	Visualização em grid de todos os arquivos (usuário e sistema) com download/exclusão.
+👤 Perfil	Personalização do tom do Hermes (personalidade, entusiasmo, emojis, memória, pensamento visível).
+⚙️ Configurações	Tema, idioma, notificações, limite de RAM, modo engenheiro, ações destrutivas.
+🔍 Modo Analista	Verificação rigorosa com decomposição, múltiplos candidatos, juiz, ferramentas e checklists.
+🧠 Pensamento Visível	Exibição do raciocínio interno em tempo real (bloco expansível).
+🚀 Modo Engenheiro	Modelo local maior opcional para tarefas complexas.
+🔧 Ferramentas	Execução segura de Python, shell, leitura de arquivos, busca, indexação, análise estática, compilação.
+📊 Monitor	Medição contínua de RAM/CPU com pausa automática de ferramentas pesadas.
+📝 Logs	Auditoria de todas as execuções de tools, logs de conversa e do modo analista (JSONL).
+Roadmap
+✅ MVP (concluído)
 
-### 🔄 Troca de agente
+Backend FastAPI, SQLite, SPA vanilla, integração com LLM local, Agent Loop básico, memória em 3 camadas, classificador heurístico.
 
-- não recarrega modelo
-- não reinicializa contexto global
-- apenas altera prompt + tools
+✅ V1 (concluída)
 
-> Isso garante fluidez e baixo custo computacional.
+Modo Analista completo, streaming SSE, Pensamento Visível, classificador híbrido, monitor de recursos, notificações push, sandbox reforçado, testes automatizados.
 
----
+🟡 V2 (em desenvolvimento)
 
-## 6. Sistema de Tools (execução externa)
+Modo Engenheiro, RAG avançado (busca semântica com FAISS), planejamento multi-step, especialização por domínio (Android, BLE…), empacotamento (.exe, pacote Linux), interface por voz (STT/TTS).
 
-O Hermes delega execução real para ferramentas locais.
+Princípios Fundamentais
+Local-first – Nada depende de nuvem; dados e processamento permanecem na máquina do usuário.
 
-### 📌 Princípio central
+Ferramentas > LLM – O modelo nunca executa lógica crítica; tudo é delegado a ferramentas determinísticas.
 
-> O LLM nunca deve ser fonte de verdade computacional.
+Contexto mínimo necessário – Memória compactada e priorizada para respeitar o orçamento de tokens.
 
-### 🧰 Tools principais
+Iteração contínua – O agente refina a resposta com base em feedback real das ferramentas.
 
-- execução de código (sandbox Python / C / shell, 128MB, sem rede, timeout)
-- leitura de arquivos e projetos
-- parsing de PDFs (datasheets)
-- busca web (SearXNG local)
-- compilação de firmware (PlatformIO)
-- análise de logs
-- cálculo simbólico (SymPy)
-- verificação de segurança (Bandit, ShellCheck)
-- indexação de código (FAISS + embeddings)
-- WebSearchTool (SearXNG local)
+Sistema testável – Componentes isolados e cobertos por testes.
 
-### 📤 Contrato de tools
+Latência como moeda – No modo Analista, qualidade é priorizada sobre velocidade.
 
-Toda tool deve:
+Hardware Alvo
+Componente	Especificação
+CPU	AMD Ryzen 5 5500
+GPU	AMD RX 580 8GB (Vulkan)
+RAM	16 GB DDR4
+Funciona em configurações mais modestas, ajustando o limite de RAM e o tamanho do modelo.
 
-- retornar dados estruturados (JSON ou Markdown limpo)
-- nunca retornar texto ambíguo
-- sempre incluir erros explicitamente
-- ser determinística sempre que possível
+Privacidade
+100% local – Nenhuma informação é enviada à internet, exceto se o usuário ativar explicitamente a busca web (via SearXNG local).
 
----
+Controle total – Chats, projetos e memórias podem ser apagados a qualquer momento.
 
-## 7. Gestão de contexto e memória
+Logs anônimos – Registros de auditoria não contêm identificadores pessoais.
 
-O contexto é tratado como **recurso crítico e limitado**.
+Licença
+MIT – veja o arquivo LICENSE para detalhes.
 
-### 🧩 Estrutura de memória
-
-**1. Memória arquitetural** (alta prioridade)
-- decisões de design
-- padrões adotados
-- escolhas técnicas
-
-**2. Memória de código**
-- indexação por arquivo/função
-- rastreabilidade de mudanças
-- RAG semântico com embeddings (FAISS)
-
-**3. Memória conversacional**
-- resumida continuamente
-- não preserva histórico bruto
-
-### 🔄 Estratégia de compressão
-
-- resumos incrementais automáticos
-- eliminação de redundância
-- preservação de decisões críticas
-
-### 🔎 Recuperação
-
-- baseada em contexto ativo
-- busca semântica (RAG) para código e documentos
-- priorização por relevância técnica
-- reranking cross-encoder
-
----
-
-## 8. Modo Analista
-
-O **Modo Analista** é a principal inovação da V1. Ele troca latência por qualidade, aplicando um processo rigoroso de verificação antes de entregar qualquer resposta, usando **o mesmo modelo Qwen 7B-8B**, sem depender de hardware extra.
-
-### Estratégias combinadas
-
-- **Decomposição de tarefa**: quebra o problema em subtarefas independentes
-- **Self-consistency (voto)**: gera 3 candidatos com temperatura alta e escolhe o melhor
-- **Self-refine (crítica)**: cada candidato é atacado pelo próprio modelo
-- **Debate interno**: simulação Arquiteto vs Revisor
-- **Verificação obrigatória por tools**: código só é aceito se passar em execução real
-- **Checklists de domínio**: biblioteca de padrões (segurança, arquitetura, firmware)
-- **Orçamento de raciocínio**: mais iterações e scratchpad interno ilimitado
-
-### Ativação
-
-- Chip "Analista" na interface
-- Automático para perfis de alto rigor (personalidade "técnico", filtro de conteúdo 3+)
-
----
-
-## 9. Pensamento Visível
-
-Na V1, o usuário pode ativar a exibição do raciocínio interno do Hermes diretamente no chat, no estilo DeepSeek/Claude.
-
-- Bloco expansível acima da resposta final
-- Preenchido em tempo real via streaming SSE
-- Mostra decomposição, geração de candidatos, críticas, decisão do juiz, resultados de tools
-- Controlado por toggle na interface e salvo no perfil
-
----
-
-## 10. Princípios fundamentais
-
-- **Local-first** — nada depende de nuvem
-- **Determinístico sempre que possível**
-- **Ferramentas > raciocínio do LLM**
-- **Contexto mínimo necessário**
-- **Iteração contínua**
-- **Sistema testável, não "mágico"**
-- **Latência como moeda de troca por qualidade (modo analista)**
-- **Modelo maior é opcional, nunca obrigatório**
-
----
-
-## 11. Hardware alvo
-
-| Componente | Especificação |
-|---|---|
-| CPU | AMD Ryzen 5 5500 |
-| GPU | AMD RX 580 8GB (Vulkan) |
-| RAM | 16GB DDR4 |
-
-> O sistema foi projetado sob restrição real de hardware, não como arquitetura teórica ilimitada.
-
----
-
-## 12. Funcionalidades
-
-### 🎙️ Interface por voz
-- comandos por voz
-- respostas faladas (streaming)
-- interação contínua
-
-### 📁 Projetos com contexto
-- projetos isolados
-- histórico técnico persistente
-- evolução incremental
-
-### 💻 Desenvolvimento assistido
-- geração de código
-- refatoração
-- debugging com execução real
-- modo analista para qualidade máxima
-
-### 🧠 Memória local
-- decisões armazenadas
-- padrões aprendidos
-- recuperação contextual
-- RAG semântico para código e documentos
-
-### 🔎 Modo pesquisa
-- busca web sob demanda (SearXNG local)
-- integração com contexto local
-
-### 📚 Base de conhecimento
-- documentos
-- notas técnicas
-- referências externas
-
-### 🧪 Modo Analista
-- múltiplos candidatos, auto-crítica, juiz
-- verificação obrigatória por tools
-- checklists de qualidade por domínio
-- pensamento visível opcional
-
-### ⚙️ Modo Engenheiro (V2, opcional)
-- segundo modelo local maior (configurável)
-- fallback automático para o padrão se indisponível
-
-### 🌐 Domínios especializados (V2)
-- Firmware (BLE, registradores, PlatformIO)
-- Android (Kotlin/Java, Gradle)
-
-### 📊 Streaming e pensamento visível (V1)
-- resposta token a token via SSE
-- raciocínio interno exibido em tempo real
-
----
-
-## 13. Roadmap
-
-### ✅ MVP (fundação do sistema)
-- [x] backend FastAPI
-- [x] agent loop funcional
-- [x] sistema de tools confiável
-- [x] orquestração simples (heurística)
-- [x] contexto mínimo funcional
-- [x] integração com ambiente local
-- [x] SQLite + schemas (projetos, chats, mensagens, perfil, arquivos)
-- [x] Navegação SPA (chat, projetos, sidebar, busca)
-- [ ] Chat funcional (LLM real, anexos, tools, agent loop)
-- [x] Memória em 3 camadas + Galeria de arquivos
-- [x] Perfil completo com persistência e aplicação no LLM
-- [x] Configurações (ações destrutivas, notificações, RAM, esfera reativa)
-
-### 🟡 V1 (sistema utilizável — em desenvolvimento)
-- [ ] Modo Analista (agente revisor obrigatório, self-consistency, checklists)
-- [ ] Classificador híbrido de intenção (embeddings + heurística)
-- [ ] Streaming SSE (resposta em tempo real)
-- [ ] Pensamento visível no chat (transparent reasoning)
-- [ ] Melhoria de tools e sandbox seguro (WebSearch, indexação, segurança)
-- [ ] Controle de recursos (RAM/CPU) e notificações de sistema
-
-### 🔵 V2 (sistema avançado — planejada)
-- [ ] Modo Engenheiro (modelo maior opcional)
-- [ ] RAG avançado para código (FAISS + embeddings)
-- [ ] Planejamento multi-step explícito
-- [ ] Especialização por domínio (BLE, firmware, Android)
-- [ ] Galeria integrada com RAG
-
-### 📦 Empacotamento
-- [ ] instalador local (.exe / Linux package)
-- [ ] backend + frontend integrados
-- [ ] setup automatizado
-
----
-
-## 14. Objetivo final
-
-O Hermes não é um assistente de perguntas.
-
-É um sistema onde:
-
-> Você constrói software junto com uma IA local, contínua e operacional.
-
----
-
-## 15. Privacidade
-
-- execução 100% local por padrão
-- nenhum envio obrigatório de dados
-- controle total de memória e contexto
-
----
-
-## 16. Hermes vs sistemas tradicionais
-
-| Característica | Hermes | Assistentes comuns |
-|---|---|---|
-| Execução | Local | Cloud |
-| Memória | Estruturada por projeto | Limitada |
-| Ferramentas | Profundas e locais | Limitadas |
-| Foco | Engenharia contínua | Respostas |
-| Controle | Total | Parcial |
-| Modo Analista | Sim (qualidade por iteração) | Não |
-| Pensamento visível | Sim (opcional) | Limitado |
-| Streaming | Sim (SSE) | Sim |
-| Modelo engenheiro | Opcional, local | N/A (cloud) |
-
----
-
-## 👨‍💻 Autor
-
-**Felipe Sant'Oliver**
-
----
-
-## 📄 Licença
-
-MIT
+Desenvolvido por Felipe Sant'Oliver – um assistente de IA para engenheiros, feito por um engenheiro.
