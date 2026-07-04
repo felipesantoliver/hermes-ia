@@ -153,13 +153,13 @@ _uvicorn_server = None
 
 
 def _load_backend_app():
-    """Importa backend/main.py (que define `app = FastAPI(...)`) sob um
-    nome de módulo próprio ("hermes_backend_main"), para nunca colidir
-    com este arquivo (que também se chama main.py, mas é outro processo
-    lógico: o launcher, não o backend)."""
+    """Importa backend/backend_main.py (que define `app = FastAPI(...)`) sob
+    um nome de módulo próprio ("hermes_backend_main"), para nunca colidir
+    com este arquivo (que se chama main.py, mas é outro processo lógico: o
+    launcher, não o backend)."""
     import importlib.util
 
-    backend_main_path = BUNDLE_DIR / "backend" / "main.py"
+    backend_main_path = BUNDLE_DIR / "backend" / "backend_main.py"
     spec = importlib.util.spec_from_file_location("hermes_backend_main", backend_main_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

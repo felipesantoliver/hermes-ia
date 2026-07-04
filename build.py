@@ -7,7 +7,8 @@
 #   2. Confere/instala pywebview e pyinstaller (dependências de build, não
 #      de runtime do produto — por isso ficam fora do requirements.txt
 #      principal, em requirements-windows.txt).
-#   3. Gera icon.ico se ainda não existir.
+#   3. Gera icon.ico se ainda não existir (ou regenera se existir mas
+#      estiver vazio/corrompido).
 #   4. Roda o PyInstaller com os parâmetros corretos (--add-data usa ";"
 #      como separador no Windows, "os.pathsep" cobre isso automaticamente).
 #   5. Confirma que dist/Hermes-ia.exe foi criado e imprime os próximos
@@ -60,7 +61,11 @@ def _ensure_build_deps() -> None:
 
 def _ensure_icon() -> None:
     if ICON_PATH.exists():
-        return
+        if ICON_PATH.stat().st_size == 0:
+            print("⚠️  icon.ico existe mas está vazio/corrompido (0 bytes) — removendo...")
+            ICON_PATH.unlink()
+        else:
+            return
     print("🎨 icon.ico não encontrado — gerando um ícone padrão (make_icon.py)...")
     make_icon = ROOT / "make_icon.py"
     if not make_icon.exists():
@@ -68,6 +73,8 @@ def _ensure_icon() -> None:
     subprocess.run([sys.executable, str(make_icon)], check=True)
     if not ICON_PATH.exists():
         _fail("make_icon.py rodou mas icon.ico ainda não existe.")
+    if ICON_PATH.stat().st_size == 0:
+        _fail("make_icon.py rodou mas icon.ico ainda está vazio (0 bytes).")
 
 
 def _clean_previous_build() -> None:
