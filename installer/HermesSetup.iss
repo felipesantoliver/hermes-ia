@@ -71,6 +71,8 @@ var
 const
   WV2ClientGuid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
   WV2BootstrapperUrl = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703';
+  ModelBaseUrl = 'https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/';
+  MaxDownloadWaitSeconds = 4 * 60 * 60;
 
 function RunCaptureToFile(const CmdLine, OutFile: String): Boolean;
 var
@@ -151,33 +153,31 @@ begin
 end;
 
 function GetModelInfo(Index: Integer; var Url: String; var SizeMB: Int64; var Label_: String): Boolean;
-const
-  BaseUrl = 'https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/';
 begin
   Result := True;
   case Index of
     0: begin
-         Url := BaseUrl + 'qwen2.5-7b-instruct-q8_0.gguf';
+         Url := ModelBaseUrl + 'qwen2.5-7b-instruct-q8_0.gguf';
          SizeMB := 8100;
          Label_ := 'Qwen2.5-7B-Instruct-Q8_0 (alta qualidade, ~8.1 GB)';
        end;
     1: begin
-         Url := BaseUrl + 'qwen2.5-7b-instruct-q4_k_m.gguf';
+         Url := ModelBaseUrl + 'qwen2.5-7b-instruct-q4_k_m.gguf';
          SizeMB := 4700;
          Label_ := 'Qwen2.5-7B-Instruct-Q4_K_M (equilibrado, ~4.7 GB)';
        end;
     2: begin
-         Url := BaseUrl + 'qwen2.5-7b-instruct-q2_k.gguf';
+         Url := ModelBaseUrl + 'qwen2.5-7b-instruct-q2_k.gguf';
          SizeMB := 3100;
          Label_ := 'Qwen2.5-7B-Instruct-Q2_K (mais leve, ~3.1 GB)';
        end;
     3: begin
-         Url := BaseUrl + 'qwen2.5-7b-instruct-q2_k.gguf';
+         Url := ModelBaseUrl + 'qwen2.5-7b-instruct-q2_k.gguf';
          SizeMB := 3100;
          Label_ := 'Qwen2.5-7B-Instruct-Q2_K (recomendado para CPU, ~3.1 GB)';
        end;
     4: begin
-         Url := BaseUrl + 'qwen2.5-7b-instruct-q4_k_m.gguf';
+         Url := ModelBaseUrl + 'qwen2.5-7b-instruct-q4_k_m.gguf';
          SizeMB := 4700;
          Label_ := 'Qwen2.5-7B-Instruct-Q4_K_M (opção segura, ~4.7 GB)';
        end;
@@ -295,8 +295,6 @@ var
   Percent: Integer;
   ResultCode: Integer;
   Elapsed: Integer;
-const
-  MaxWaitSeconds = 4 * 60 * 60;
 begin
   ExtractTemporaryFile('DownloadFile.ps1');
   ScriptPath := ExpandConstant('{tmp}\DownloadFile.ps1');
@@ -338,7 +336,7 @@ begin
         DownloadPage.SetProgress(Percent, 100);
         DownloadPage.SetText('Baixando o modelo de IA... (' + IntToStr(Percent) + '%)', Msg);
       end;
-    until (State = 'done') or (State = 'error') or (Elapsed >= MaxWaitSeconds);
+    until (State = 'done') or (State = 'error') or (Elapsed >= MaxDownloadWaitSeconds);
 
     if State = 'error' then
       MsgBox(
