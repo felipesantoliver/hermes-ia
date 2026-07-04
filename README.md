@@ -3,7 +3,7 @@
 **Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
 O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
-> **Status:** ✅ MVP concluído | ✅ V1 concluída | ✅ V2 concluído.
+> **Status:** ✅ MVP concluído | ✅ V1 concluída | ✅ V2 concluído | ✅ V2.4 (instalador gráfico Windows) concluído.
 
 ---
 
@@ -13,7 +13,7 @@ O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assi
 - [Arquitetura](#arquitetura)
 - [Componentes Principais](#componentes-principais)
 - [Estrutura do Projeto](#estrutura-do-projeto)
-- [Como Executar Localmente](#como-executar-localmente)
+- [Como Executar](#como-executar)
 - [Funcionalidades](#funcionalidades)
 - [Roadmap](#roadmap)
 - [Princípios Fundamentais](#princípios-fundamentais)
@@ -38,12 +38,14 @@ O Hermes é um ambiente onde **projetos são entidades vivas**, decisões arquit
 - **RAG avançado** para código (busca semântica em funções/classes do projeto)
 - **Planejamento multi‑step explícito** (V2.2) – o Hermes gera um plano de ação antes de executar tarefas complexas, exibindo os passos e progresso em tempo real
 - **Especialização por domínio** (V2.3) – chips Firmware e Android, com ferramentas dedicadas (BLE, Gradle, validação de layouts)
+- **Instalador gráfico para Windows** (V2.4) – assistente "next, next, finish" que detecta a placa de vídeo, baixa o modelo certo e cria os atalhos, sem precisar de linha de comando
 
 > O objetivo não é gerar respostas – é **resolver problemas de engenharia de forma contínua e incremental**.
 
 ---
 
 ## Arquitetura
+```
 Usuário
 ↓
 Frontend (SPA vanilla + Three.js)
@@ -58,13 +60,12 @@ LLM Core (Qwen 7B/8B) – ou modelo Engenheiro opcional
 ↓
 Planejador multi‑step (V2.2) – gera planos de ação para tarefas complexas
 ↓
-Tools (sandbox) – Python, Shell, arquivos, busca, indexação, firmware, **BLE, Gradle, layout**
+Tools (sandbox) – Python, Shell, arquivos, busca, indexação, firmware, BLE, Gradle, layout
 ↓
 Memória (3 camadas + RAG com FAISS para código)
 ↓
 Resposta final (streaming SSE + pensamento visível opcional + plano)
-
-text
+```
 
 ### Backend (FastAPI)
 - Rotas organizadas por domínio (chat, projetos, perfil, arquivos, sistema)
@@ -177,6 +178,15 @@ Ativado manualmente ou automaticamente para contextos de alto rigor. Processo:
 - Ativação via chips de domínio no frontend, que podem ser combinados com os modos existentes (code, engineer, analyst).
 - O agente é selecionado automaticamente se o domínio for detectado pela heurística (classificador híbrido) ou forçado pelo usuário.
 
+### Instalador Gráfico Windows (V2.4)
+- Feito em **Inno Setup** (Pascal Script), 100% em português do Brasil.
+- Fluxo "next, next, finish": boas-vindas, licença MIT, pasta de instalação, seleção da placa de vídeo, download do modelo, atalhos.
+- **Detecção de GPU**: tenta identificar automaticamente a placa de vídeo (via `wmic`/PowerShell) e pré-seleciona a opção correta; o usuário sempre pode confirmar ou trocar manualmente, inclusive com uma opção "Não sei".
+- **Download do modelo com retomada**: usa o BITS (Background Intelligent Transfer Service, nativo do Windows) para baixar o `.gguf` certo direto do Hugging Face, com barra de progresso e retomada automática se a conexão cair. Pode ser pulado se a internet estiver lenta.
+- **Verificações automáticas**: espaço em disco disponível e presença do Microsoft Edge WebView2 Runtime (necessário para o pywebview), oferecendo baixar e instalar se estiver faltando.
+- Não exige privilégios de administrador, a menos que o usuário escolha instalar em `C:\Program Files`.
+- Código-fonte versionado em `installer/` (veja [Como Executar](#como-executar), Opção A).
+
 ### Pensamento Visível
 Quando o modo Analista está ativo, o backend emite eventos `thinking` (SSE) com a narrativa do raciocínio. O frontend exibe isso em um bloco expansível acima da resposta final.
 
@@ -195,7 +205,12 @@ Quando o uso de RAM ultrapassa 80% do limite configurado, o sistema entra em `un
 ---
 
 ## Estrutura do Projeto
+```
 hermes-ai/
+├── installer/
+│ ├── HermesSetup.iss         # script do instalador gráfico (Inno Setup)
+│ └── scripts/
+│   └── DownloadFile.ps1      # download do modelo via BITS, com retomada
 ├── backend/
 │ ├── backend_main.py
 │ ├── app/
@@ -268,31 +283,50 @@ hermes-ai/
 │ │ ├── settings.css
 │ │ └── profile.css
 │ └── js/
-│ ├── state.js
-│ ├── ui.js
-│ ├── chat.js
-│ ├── chats.js
-│ ├── projects.js
-│ ├── gallery.js
-│ ├── settings.js
-│ ├── profile.js
-│ ├── notifications.js
-│ └── spheres.js
+│   ├── state.js
+│   ├── ui.js
+│   ├── chat.js
+│   ├── chats.js
+│   ├── projects.js
+│   ├── gallery.js
+│   ├── settings.js
+│   ├── profile.js
+│   ├── notifications.js
+│   └── spheres.js
 ├── .gitignore
 └── README.md
-
-text
+```
 
 ---
 
 ## Como Executar
 
-O Hermes tem dois jeitos de rodar: **como app Windows** (`Hermes-ia.exe`, recomendado para
-uso do dia a dia) ou **em modo dev** (backend + frontend soltos, para quem vai mexer no código).
+O Hermes tem quatro jeitos de rodar, do mais simples ao mais avançado.
 
-### Opção A — Usar o Hermes-ia.exe (Windows 10/11)
+### Opção A — Instalador gráfico do Windows (recomendado para o público geral)
 
-Se você já tem uma pasta de distribuição (`Hermes-ia.exe`, `models/`, etc.):
+A forma mais simples, pensada para quem nunca mexeu com terminal:
+
+1. Baixe o `Hermes-ia-Setup.exe` (gerado a partir de `installer/HermesSetup.iss`).
+2. Dê duplo clique e siga o assistente: boas-vindas → licença → pasta de instalação → placa de vídeo → download do modelo → atalhos.
+3. O instalador detecta (ou pergunta) qual placa de vídeo você tem e já baixa a versão certa do modelo Qwen automaticamente, com barra de progresso.
+4. Ao final, é só marcar "Executar o Hermes AI agora" — pronto, sem terminal, sem configuração manual.
+
+Não precisa ser administrador, a menos que você escolha instalar em `C:\Program Files` (aí o Windows pede elevação automaticamente).
+
+**Para gerar esse instalador** (só quem for distribuir o Hermes precisa fazer isso):
+```bash
+# 1. Gere o executável (veja Opção C abaixo)
+python build.py
+
+# 2. Compile o instalador com o Inno Setup 6 (https://jrsoftware.org/isinfo.php)
+ISCC.exe installer\HermesSetup.iss
+```
+O `.exe` final sai em `installer_output\Hermes-ia-Setup-<versão>.exe`.
+
+### Opção B — Usar o Hermes-ia.exe manualmente (Windows 10/11)
+
+Se você já tem uma pasta de distribuição (`Hermes-ia.exe`, `models/`, etc.) e prefere não usar o instalador:
 
 1. Coloque o modelo `.gguf` em `models/hermes-core.gguf` (baixe um Qwen 7B–8B quantizado, ex.:
    `Qwen2.5-7B-Instruct-Q4_K_M.gguf`).
@@ -306,7 +340,7 @@ Se você já tem uma pasta de distribuição (`Hermes-ia.exe`, `models/`, etc.):
 o app para `C:\Program Files\Hermes-ia\` e criar atalhos na Área de Trabalho e no Menu Iniciar. Ou,
 mais simples: botão direito no `.exe` → "Criar atalho" e mova para onde quiser.
 
-### Opção B — Buildar o .exe você mesmo
+### Opção C — Buildar o .exe você mesmo
 
 Pré-requisitos: **Windows 10/11**, **Python 3.10+**.
 
@@ -323,9 +357,10 @@ python build.py
 
 1. Copie `models/` (com o `.gguf`) para dentro de `dist/`.
 2. Rode `dist/Hermes-ia.exe` e confirme que abre sem terminal.
-3. Distribua a pasta `dist/` inteira (ou rode `install.ps1` de dentro dela).
+3. Distribua a pasta `dist/` inteira, rode `install.ps1` de dentro dela, ou use o instalador gráfico (Opção A).
 
 **Estrutura final de distribuição:**
+```
 Hermes-ia/
 ├── Hermes-ia.exe        (backend + frontend embutidos)
 ├── models/
@@ -336,9 +371,10 @@ Hermes-ia/
 │   ├── loose/
 │   └── logs/
 └── README.md
+```
 `models/` fica fora do `.exe` de propósito — assim dá para trocar de modelo sem rebuildar.
 
-### Opção C — Modo dev (backend + frontend soltos, qualquer SO)
+### Opção D — Modo dev (backend + frontend soltos, qualquer SO)
 
 1. **Configure o backend**
 ```bash
@@ -375,8 +411,9 @@ Hermes-ia/
 
 | Problema | Solução |
 |---|---|
-| **"Windows protegeu seu computador" (SmartScreen)** | O executável não é assinado digitalmente (assinatura de código paga). Clique em "Mais informações" → "Executar assim mesmo". Isso é esperado para apps não-assinados e não indica malware — mas só rode builds em que você confia na origem. |
-| **Falta o Edge WebView2 Runtime** | Vem pré-instalado no Windows 10/11 atualizado. Se faltar, baixe em https://developer.microsoft.com/microsoft-edge/webview2/ (Evergreen Bootstrapper). |
+| **"Windows protegeu seu computador" (SmartScreen)** | O executável (e o instalador) não são assinados digitalmente (assinatura de código paga). Clique em "Mais informações" → "Executar assim mesmo". Isso é esperado para apps não-assinados e não indica malware — mas só rode builds em que você confia na origem. |
+| **Falta o Edge WebView2 Runtime** | O instalador gráfico detecta e oferece instalar automaticamente. Se estiver usando o `.exe` manualmente, baixe em https://developer.microsoft.com/microsoft-edge/webview2/ (Evergreen Bootstrapper). |
+| **Download do modelo falhou no instalador** | Confira o log em `<pasta de instalação>\data\logs\installer_download.log`. Você pode rodar o instalador de novo (o BITS retoma sozinho) ou baixar o `.gguf` manualmente e colocá-lo em `models\hermes-core.gguf`. |
 | **Porta 8000 ocupada** | Feche outro processo usando a porta (`netstat -ano \| findstr :8000` no cmd, depois `taskkill /PID <pid> /F`) ou feche outra instância do Hermes já aberta. |
 | **"Modelo não encontrado"** | Confirme que o arquivo `.gguf` está exatamente em `models/hermes-core.gguf`, ao lado do `Hermes-ia.exe` (não dentro de uma subpasta extra). |
 | **Janela abre em branco / erro de conexão** | O backend pode não ter subido a tempo (modelo muito grande carregando). Feche e abra de novo; se persistir, confira `data/logs/`. |
@@ -405,6 +442,7 @@ Hermes-ia/
 | 🛠️ Domínio Firmware | Agente especializado com ferramentas BLE e compilação PlatformIO. |
 | 📱 Domínio Android | Agente especializado com ferramentas Gradle e validação de layouts. |
 | 🖥️ App Windows nativo | `Hermes-ia.exe` — janela própria via pywebview/WebView2, sem terminal, com splash screen inteligente. |
+| 🧙 Instalador gráfico | `Hermes-ia-Setup.exe` — detecção de GPU, download do modelo com progresso/retomada, atalhos automáticos, tudo em português. |
 
 ## Roadmap
 
@@ -414,7 +452,9 @@ Hermes-ia/
 
 ✅ **V2** — Modo Engenheiro, RAG avançado, pesquisa web, planejamento multi-step, especialização por domínio, **empacotamento Windows (.exe)**.
 
-🔜 **Próximo** — pacote Linux, interface por voz (STT/TTS), assinatura de código para o `.exe`.
+✅ **V2.4** — Instalador gráfico para Windows via Inno Setup: detecção de GPU, seleção automática do modelo Qwen ideal, download com barra de progresso e retomada (BITS), verificação de espaço em disco e do WebView2 Runtime, atalhos automáticos — tudo em português do Brasil e sem exigir privilégios de administrador.
+
+🔜 **Próximo** — pacote Linux, interface por voz (STT/TTS), assinatura de código para o `.exe` e para o instalador.
 
 ## Princípios Fundamentais
 
@@ -437,7 +477,8 @@ Funciona em configurações mais modestas, ajustando o limite de RAM e o tamanho
 
 ## Privacidade
 
-- **100% local** — Nenhuma informação é enviada à internet, exceto se o usuário ativar explicitamente a busca web (via SearXNG local).
+- **100% local em uso** — Depois de instalado, nenhuma informação é enviada à internet, exceto se o usuário ativar explicitamente a busca web (via SearXNG local).
+- **Internet só na instalação** — O instalador gráfico acessa a internet apenas para baixar o modelo de IA (Hugging Face) e, se necessário, o Microsoft Edge WebView2 Runtime. O `Hermes-ia.exe` em si já vem embutido no instalador, sem download adicional.
 - **Controle total** — Chats, projetos e memórias podem ser apagados a qualquer momento.
 - **Logs anônimos** — Registros de auditoria não contêm identificadores pessoais.
 
