@@ -214,7 +214,7 @@ begin
         Code := ((B1 and $1F) shl 6) or (B2 and $3F);
         Result := Result + Chr(Code);
       end;
-      Inc(I, 2);
+      I := I + 2;
     end
     else if (B1 and $F0) = $E0 then
     begin
@@ -225,12 +225,12 @@ begin
         Code := ((B1 and $0F) shl 12) or ((B2 and $3F) shl 6) or (B3 and $3F);
         Result := Result + Chr(Code);
       end;
-      Inc(I, 3);
+      I := I + 3;
     end
     else
     begin
       { Sequência de 4 bytes ou byte inválido: pula (não esperado no JSON) }
-      Inc(I, 4);
+      I := I + 4;
     end;
   end;
 end;
