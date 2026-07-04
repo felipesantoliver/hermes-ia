@@ -27,6 +27,49 @@ class LLMClient:
         self.client = httpx.Client(timeout=timeout)
         self._engineer_llm = None  # para modo embarcado (llama-cpp-python)
 
+    def _refresh_engineer_config_from_profile(self) -> None:
+        """
+        Lê engineer_model_path/engineer_model_url do registro id=1 da tabela
+        user_profile (fonte de verdade, preenchida via PATCH /profile/ na UI)
+        e atualiza a config do engenheiro em runtime.
+
+        Fallback para os valores estáticos de settings.ENGINEER_MODEL_BASE_URL /
+        settings.ENGINEER_MODEL_PATH quando o campo do perfil estiver vazio/nulo,
+        quando a tabela ainda não tiver registro (banco recém-criado) ou quando
+        a leitura falhar por qualquer motivo — nunca lança exceção.
+        """
+        db_url = None
+        db_path = None
+        try:
+            from .db import db_cursor
+            with db_cursor() as cur:
+                cur.execute(
+                    "SELECT engineer_model_path, engineer_model_url FROM user_profile WHERE id = 1"
+                )
+                row = cur.fetchone()
+            if row is not None:
+                db_path = row["engineer_model_path"] or None
+                db_url = row["engineer_model_url"] or None
+        except Exception as e:
+            logger.warning(
+                f"Não foi possível ler engineer_model_path/engineer_model_url de user_profile "
+                f"(usando fallback de config.py): {e}"
+            )
+
+        resolved_url = db_url or settings.ENGINEER_MODEL_BASE_URL
+        resolved_path = db_path or settings.ENGINEER_MODEL_PATH
+
+        new_engineer_base_url = resolved_url.rstrip('/') if resolved_url else None
+
+        if new_engineer_base_url != self.engineer_base_url:
+            self.engineer_base_url = new_engineer_base_url
+
+        if resolved_path != self.engineer_model_path:
+            self.engineer_model_path = resolved_path
+            # o path mudou: qualquer instância embarcada carregada com o
+            # path antigo fica inválida e precisa ser recarregada.
+            self._engineer_llm = None
+
     def _get_url(self, model: str = "default") -> str:
         if model == "engineer" and self.engineer_base_url:
             return f"{self.engineer_base_url}/v1/chat/completions"
@@ -70,6 +113,7 @@ class LLMClient:
 
     def has_engineer(self) -> bool:
         """Retorna True se o modelo engenheiro está disponível (servidor ou arquivo)."""
+        self._refresh_engineer_config_from_profile()
         if self.engineer_base_url:
             return True
         if self.engineer_model_path and os.path.exists(self.engineer_model_path):
@@ -89,6 +133,8 @@ class LLMClient:
         Se model="engineer" e ENGINEER_MODEL_BASE_URL não estiver configurado,
         tenta carregar via ENGINEER_MODEL_PATH.
         """
+        if model == "engineer":
+            self._refresh_engineer_config_from_profile()
         model = self._resolve_model(model)
         if model == "engineer":
             # Tenta usar servidor primeiro
@@ -152,6 +198,8 @@ class LLMClient:
         """
         Mesma requisição de generate(), mas com stream=True.
         """
+        if model == "engineer":
+            self._refresh_engineer_config_from_profile()
         model = self._resolve_model(model)
         if model == "engineer":
             if self.engineer_base_url:
