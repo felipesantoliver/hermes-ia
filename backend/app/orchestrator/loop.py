@@ -362,10 +362,16 @@ class AgentLoop:
         mode: Optional[str] = None,
         agent_type: Optional[str] = None,
         web_search: bool = False,
+        domain: Optional[str] = None,
     ) -> str:
         enabled_tools = DEFAULT_TOOLS.copy()
         if web_search:
             enabled_tools.append("web_search")
+        if domain == "firmware":
+            enabled_tools.append("ble_config")
+        elif domain == "android":
+            enabled_tools.append("gradle_build")
+            enabled_tools.append("layout_validator")
 
         conv = self._prepare_conversation(
             messages, project_id, chat_id, mode, enabled_tools, agent_type=agent_type
@@ -438,10 +444,16 @@ class AgentLoop:
         agent_type: Optional[str] = None,
         show_thinking: bool = False,
         web_search: bool = False,
+        domain: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, str]]:
         enabled_tools = DEFAULT_TOOLS.copy()
         if web_search:
             enabled_tools.append("web_search")
+        if domain == "firmware":
+            enabled_tools.append("ble_config")
+        elif domain == "android":
+            enabled_tools.append("gradle_build")
+            enabled_tools.append("layout_validator")
 
         conv = self._prepare_conversation(
             messages, project_id, chat_id, mode, enabled_tools, agent_type=agent_type

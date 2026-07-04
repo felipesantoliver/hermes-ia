@@ -38,7 +38,7 @@ EMBEDDING_SIMILARITY_THRESHOLD = 0.7
 MODELS_DIR = DATA_DIR / "models"
 FEEDBACK_PATH = DATA_DIR / "agent_examples_feedback.jsonl"
 
-VALID_AGENTS = ("developer", "architect", "firmware", "reviewer")
+VALID_AGENTS = ("developer", "architect", "firmware", "reviewer", "android")
 
 # ---------------------------------------------------------------------------
 # Banco de exemplos rotulados (>= 20 por agente).

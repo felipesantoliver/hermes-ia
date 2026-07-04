@@ -210,6 +210,13 @@ async def _sse_event_stream(payload: ChatRequest, llm: LLMClient) -> AsyncIterat
                 thinking_payload = json.dumps({"token": data}, ensure_ascii=False)
                 yield f"event: thinking\ndata: {thinking_payload}\n\n"
                 continue
+            if event_type in ("plan", "step_start", "step_progress", "step_failed"):
+                # Eventos do plano multi-step: `data` é um dict, nunca deve
+                # ser tratado como token de texto nem entrar em full_response.
+                step_payload = json.dumps(data, ensure_ascii=False)
+                yield f"event: {event_type}\ndata: {step_payload}\n\n"
+                continue
+            # Só chegam aqui tokens de texto reais do modelo (event == "token").
             full_response += data
             token_payload = json.dumps({"token": data}, ensure_ascii=False)
             yield f"event: token\ndata: {token_payload}\n\n"
