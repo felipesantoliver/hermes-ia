@@ -186,6 +186,55 @@ begin
   end;
 end;
 
+function Utf8ToUnicode(const S: AnsiString): String;
+var
+  I, Len: Integer;
+  B1, B2, B3: Byte;
+  Code: LongInt;
+begin
+  { Decodificador simples de UTF-8 -> String Unicode (suficiente para os
+    caracteres acentuados do português usados nas mensagens do instalador;
+    não trata pares substitutos de 4 bytes, que não ocorrem aqui). }
+  Result := '';
+  Len := Length(S);
+  I := 1;
+  while I <= Len do
+  begin
+    B1 := Ord(S[I]);
+    if B1 < $80 then
+    begin
+      Result := Result + Chr(B1);
+      Inc(I);
+    end
+    else if (B1 and $E0) = $C0 then
+    begin
+      if I + 1 <= Len then
+      begin
+        B2 := Ord(S[I + 1]);
+        Code := ((B1 and $1F) shl 6) or (B2 and $3F);
+        Result := Result + Chr(Code);
+      end;
+      Inc(I, 2);
+    end
+    else if (B1 and $F0) = $E0 then
+    begin
+      if I + 2 <= Len then
+      begin
+        B2 := Ord(S[I + 1]);
+        B3 := Ord(S[I + 2]);
+        Code := ((B1 and $0F) shl 12) or ((B2 and $3F) shl 6) or (B3 and $3F);
+        Result := Result + Chr(Code);
+      end;
+      Inc(I, 3);
+    end
+    else
+    begin
+      { Sequência de 4 bytes ou byte inválido: pula (não esperado no JSON) }
+      Inc(I, 4);
+    end;
+  end;
+end;
+
 function ExtractJsonValue(const Json, Key: String): String;
 var
   Needle: String;
@@ -292,7 +341,8 @@ end;
 procedure DownloadModelWithProgress;
 var
   ScriptPath, StatusPath, DestPath, Cmd: String;
-  StatusJson, State, Msg: String;
+  StatusJson: AnsiString;
+  DecodedJson, State, Msg: String;
   Percent: Integer;
   ResultCode: Integer;
   Elapsed: Integer;
@@ -330,9 +380,10 @@ begin
 
       if LoadStringFromFile(StatusPath, StatusJson) then
       begin
-        State := ExtractJsonValue(StatusJson, 'state');
-        Percent := StrToIntDef(ExtractJsonValue(StatusJson, 'percent'), 0);
-        Msg := ExtractJsonValue(StatusJson, 'message');
+        DecodedJson := Utf8ToUnicode(StatusJson);
+        State := ExtractJsonValue(DecodedJson, 'state');
+        Percent := StrToIntDef(ExtractJsonValue(DecodedJson, 'percent'), 0);
+        Msg := ExtractJsonValue(DecodedJson, 'message');
 
         DownloadPage.SetProgress(Percent, 100);
         DownloadPage.SetText('Baixando o modelo de IA... (' + IntToStr(Percent) + '%)', Msg);
