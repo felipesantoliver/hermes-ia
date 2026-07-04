@@ -197,8 +197,8 @@ Quando o uso de RAM ultrapassa 80% do limite configurado, o sistema entra em `un
 ## Estrutura do Projeto
 hermes-ai/
 ├── backend/
+│ ├── backend_main.py
 │ ├── app/
-│ │ ├── main.py
 │ │ ├── config.py
 │ │ ├── db.py
 │ │ ├── llm.py
@@ -326,7 +326,6 @@ python build.py
 3. Distribua a pasta `dist/` inteira (ou rode `install.ps1` de dentro dela).
 
 **Estrutura final de distribuição:**
-```
 Hermes-ia/
 ├── Hermes-ia.exe        (backend + frontend embutidos)
 ├── models/
@@ -337,29 +336,28 @@ Hermes-ia/
 │   ├── loose/
 │   └── logs/
 └── README.md
-```
 `models/` fica fora do `.exe` de propósito — assim dá para trocar de modelo sem rebuildar.
 
 ### Opção C — Modo dev (backend + frontend soltos, qualquer SO)
 
 1. **Configure o backend**
-   ```bash
+```bash
    cd backend
    python -m venv venv
    source venv/bin/activate   # Linux/Mac
    # .\venv\Scripts\activate no Windows
    pip install -r requirements.txt
-   ```
+```
 2. **Configure o LLM** — baixe um Qwen 7B/8B quantizado, coloque em
    `backend/models/hermes-core.gguf` (ou ajuste `MODEL_PATH` em `config.py`), e suba o servidor:
-   ```bash
+```bash
    llama-server -m models/hermes-core.gguf --host 0.0.0.0 --port 8080
-   ```
+```
 3. **Inicie o backend** (agora já serve o frontend embutido em `/`, não precisa de servidor
    HTTP separado para os arquivos estáticos):
-   ```bash
+```bash
    uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-   ```
+```
 4. Acesse `http://localhost:8000` no navegador.
 
 ### Configuração do Modo Engenheiro (opcional)
