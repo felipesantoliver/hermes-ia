@@ -516,8 +516,7 @@ begin
   if CurPageID = wpFinished then
   begin
     if not DownloadCheckBox.Checked then
-      WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption +
-        #13#10#13#10 +
+      WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 +
         'Lembre-se: você optou por não baixar o modelo de IA agora.' + #13#10 +
         'Baixe manualmente e coloque o arquivo em:' + #13#10 +
         ExpandConstant('{app}') + '\models\hermes-core.gguf' + #13#10#13#10 +
