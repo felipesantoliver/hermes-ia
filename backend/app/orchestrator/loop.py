@@ -305,7 +305,7 @@ class AgentLoop:
                 try:
                     # Para streaming, usamos generate_stream para obter tokens
                     full_response = ""
-                    async for token in self.llm.generate_stream(
+                    for token in self.llm.generate_stream(
                         messages=conv + [{"role": "user", "content": prompt}],
                         max_tokens=1024,
                         temperature=0.3,
@@ -419,6 +419,8 @@ class AgentLoop:
                 if "tool" in data and "parameters" in data:
                     tool_name = data["tool"]
                     params = data["parameters"]
+                    if show_thinking:
+                        pass  # (variável não existe neste método não-streaming)
                     result = self._resolve_tool_result(tool_name, params, enabled_tools)
                     conv.append({"role": "assistant", "content": response})
                     conv.append({
