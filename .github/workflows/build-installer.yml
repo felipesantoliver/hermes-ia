@@ -23,6 +23,8 @@ jobs:
         run: pip install -r backend\requirements.txt
 
       - name: Gerar Hermes-ia.exe (build.py cuida do resto)
+        env:
+          PYTHONIOENCODING: utf-8
         run: python build.py
 
       - name: Instalar Inno Setup
