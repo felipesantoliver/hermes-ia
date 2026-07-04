@@ -91,6 +91,25 @@ def list_chats(scope: Optional[str] = Query(None)):
         return [_row_to_chat(r) for r in cur.fetchall()]
 
 
+@router.get("/search", response_model=List[ChatOut])
+def search_chats(q: str = Query(..., min_length=1)):
+    """Busca chats cujo título OU o conteúdo de qualquer mensagem associada
+    contenha o texto buscado (case-insensitive). Cada chat aparece uma
+    única vez no resultado, mesmo que várias mensagens batam com a busca."""
+    like = f"%{q.strip().lower()}%"
+    with db_cursor() as cur:
+        cur.execute(
+            """SELECT DISTINCT c.*
+               FROM chats c
+               LEFT JOIN messages m ON m.chat_id = c.id
+               WHERE LOWER(c.title) LIKE ?
+                  OR LOWER(m.content) LIKE ?
+               ORDER BY c.pinned DESC, c.updated_at DESC""",
+            (like, like),
+        )
+        return [_row_to_chat(r) for r in cur.fetchall()]
+
+
 @router.post("/", response_model=ChatOut, status_code=201)
 def create_chat(payload: ChatCreate):
     with db_cursor() as cur:

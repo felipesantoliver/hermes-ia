@@ -276,12 +276,10 @@
     searchOverlay.classList.remove('open');
   }
 
-  function renderSearchResults(query) {
-    const q = query.trim().toLowerCase();
-    const matches = q
-      ? sidebarChats.filter((c) => c.title.toLowerCase().includes(q))
-      : sidebarChats;
+  let searchDebounceTimer = null;
+  let searchAbortController = null;
 
+  function renderSearchResultsList(matches) {
     searchResults.innerHTML = '';
     if (matches.length === 0) {
       searchResults.innerHTML = `<div class="chat-list-empty">Nenhuma conversa encontrada</div>`;
@@ -298,6 +296,52 @@
       });
       searchResults.appendChild(row);
     });
+  }
+
+  /* Filtro local (fallback): só olha o título, usado quando a busca no
+     backend falha ou quando o termo é curto demais para valer uma
+     chamada de rede. */
+  function renderSearchResultsLocal(query) {
+    const q = query.trim().toLowerCase();
+    const matches = q
+      ? sidebarChats.filter((c) => c.title.toLowerCase().includes(q))
+      : sidebarChats;
+    renderSearchResultsList(matches);
+  }
+
+  /* Busca por título/conteúdo (via backend), com debounce de ~300ms.
+     Só chama a rede a partir de 2 caracteres; abaixo disso usa o filtro
+     local (que também cobre o caso de campo vazio, mostrando tudo). */
+  function renderSearchResults(query) {
+    const q = query.trim();
+
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+
+    if (q.length < 2) {
+      renderSearchResultsLocal(query);
+      return;
+    }
+
+    searchDebounceTimer = setTimeout(async () => {
+      if (searchAbortController) searchAbortController.abort();
+      searchAbortController = new AbortController();
+
+      try {
+        const res = await fetch(`${API()}/chats/search?q=${encodeURIComponent(q)}`, {
+          signal: searchAbortController.signal,
+        });
+        if (!res.ok) throw new Error('Falha na busca por conteúdo');
+        const results = await res.json();
+        renderSearchResultsList(results);
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        console.error('[Hermes] Erro na busca por conteúdo, usando filtro local:', err);
+        renderSearchResultsLocal(query);
+      }
+    }, 300);
   }
 
   searchBtn.addEventListener('click', openSearch);

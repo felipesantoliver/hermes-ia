@@ -646,10 +646,73 @@ sendMessageToBackend = async function(userText, mode, projectId) {
   }
 };
 
-// Microfone: toast simples
+// Microfone: toast simples e não-bloqueante (substitui alert())
+let hermesToastStylesInjected = false;
+function ensureToastStyles() {
+  if (hermesToastStylesInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    .hermes-toast {
+      position: fixed;
+      z-index: 9999;
+      max-width: 260px;
+      background: var(--bg-elevated);
+      color: var(--text-hi);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-family: var(--font-body);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      pointer-events: none;
+    }
+    .hermes-toast.hermes-toast-show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  `;
+  document.head.appendChild(style);
+  hermesToastStylesInjected = true;
+}
+
+/**
+ * Exibe um toast simples e temporário próximo a um elemento âncora
+ * (ou no canto inferior direito da tela, se nenhum for passado).
+ * @param {string} text
+ * @param {HTMLElement} [anchorEl]
+ */
+function showToast(text, anchorEl) {
+  ensureToastStyles();
+
+  const toast = document.createElement('div');
+  toast.className = 'hermes-toast';
+  toast.textContent = text;
+  document.body.appendChild(toast);
+
+  if (anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    toast.style.left = Math.max(8, rect.left) + 'px';
+    toast.style.top = Math.max(8, rect.top - 44) + 'px';
+  } else {
+    toast.style.right = '20px';
+    toast.style.bottom = '20px';
+  }
+
+  // Força o navegador a computar o estado inicial antes de animar
+  requestAnimationFrame(() => toast.classList.add('hermes-toast-show'));
+
+  setTimeout(() => {
+    toast.classList.remove('hermes-toast-show');
+    setTimeout(() => toast.remove(), 250);
+  }, 2500);
+}
+
 const micBtn = document.querySelector('.input-icon-btn[title="Microfone"]');
 micBtn.addEventListener('click', () => {
-  alert('Ditado por voz ainda não disponível');
+  showToast('Ditado por voz ainda não disponível', micBtn);
 });
 
 // Expor sendMessage globalmente para uso em outros módulos (ex: projetos)
