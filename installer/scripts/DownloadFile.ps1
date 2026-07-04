@@ -64,7 +64,7 @@ try {
     # retomar em caso de queda de conexão (RetryInterval/RetryTimeout),
     # sem reiniciar o download do zero.
     Start-BitsTransfer -Source $Url -Destination $Destination -DisplayName $jobName `
-        -Asynchronous -RetryInterval 30 -RetryTimeout 3600 -ErrorAction Stop | Out-Null
+        -Asynchronous -RetryInterval 60 -RetryTimeout 3600 -ErrorAction Stop | Out-Null
 
     do {
         Start-Sleep -Seconds 1
