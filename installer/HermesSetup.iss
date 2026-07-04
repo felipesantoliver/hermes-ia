@@ -229,9 +229,10 @@ end;
 
 function HasEnoughDiskSpace(const Drive: String; const RequiredMB: Int64): Boolean;
 var
-  FreeMB: Int64;
+  FreeBytes, TotalBytes: Int64;
 begin
-  Result := GetSpaceOnDisk64(Drive, True, FreeMB) and (FreeMB >= RequiredMB);
+  Result := GetSpaceOnDisk64(Drive, FreeBytes, TotalBytes) and
+    (FreeBytes >= RequiredMB * 1024 * 1024);
 end;
 
 function IsWebView2Installed(): Boolean;
