@@ -184,6 +184,12 @@ class LLMClient:
                 response.raise_for_status()
                 data = response.json()
                 return data['choices'][0]['message']['content']
+            except httpx.ConnectError:
+                raise Exception(
+                    "Não consegui falar com o modelo local (llama-server). "
+                    "Se você acabou de abrir o Hermes, ele pode ainda estar "
+                    "carregando o modelo — aguarde um pouco e tente de novo."
+                )
             except Exception as e:
                 raise Exception(f"Erro ao gerar resposta com modelo default: {str(e)}")
 
@@ -297,6 +303,12 @@ class LLMClient:
                         token = delta.get("content")
                         if token:
                             yield token
+            except httpx.ConnectError:
+                raise Exception(
+                    "Não consegui falar com o modelo local (llama-server). "
+                    "Se você acabou de abrir o Hermes, ele pode ainda estar "
+                    "carregando o modelo — aguarde um pouco e tente de novo."
+                )
             except Exception as e:
                 raise Exception(f"Erro ao gerar resposta (stream) com modelo default: {str(e)}")
 
