@@ -64,7 +64,17 @@ input.addEventListener('input', () => {
 });
 
 /* ---------- Chips de modo: apenas um ativo por vez (code / engineer / analyst) ---------- */
+/* A escolha de domínio (firmware/android/etc.) não é mais manual: o backend
+   detecta automaticamente o agente ideal a partir da mensagem do usuário
+   (HybridAgentRouter). Aqui só cuidamos da exclusividade visual dos chips
+   de modo e do título do cabeçalho, que reflete o modo ativo (ex.: "Hermes · Engenheiro"). */
 const MODE_CHIP_IDS = ['mode-code', 'mode-engineer', 'mode-analyst'];
+const MODE_LABELS = {
+  'mode-code': 'Programação',
+  'mode-engineer': 'Engenheiro',
+  'mode-analyst': 'Analista',
+};
+
 MODE_CHIP_IDS.forEach((id) => {
   document.getElementById(id).addEventListener('click', function () {
     const wasActive = this.classList.contains('active');
@@ -73,49 +83,18 @@ MODE_CHIP_IDS.forEach((id) => {
     });
     if (!wasActive) {
       this.classList.add('active');
-    }
-  });
-});
-
-/* ---------- Chips de domínio: exclusivos entre si, mas não com modos ---------- */
-const DOMAIN_CHIP_IDS = ['domain-firmware', 'domain-android'];
-DOMAIN_CHIP_IDS.forEach((id) => {
-  document.getElementById(id).addEventListener('click', function () {
-    const wasActive = this.classList.contains('active');
-    DOMAIN_CHIP_IDS.forEach((otherId) => {
-      document.getElementById(otherId).classList.remove('active');
-    });
-    if (!wasActive) {
-      this.classList.add('active');
-      // Atualiza o badge do título
-      updateDomainBadge(this.id.replace('domain-', ''));
+      updateModeTitle(MODE_LABELS[this.id]);
     } else {
-      updateDomainBadge(null);
+      updateModeTitle(null);
     }
   });
 });
 
-/* ---------- Função para atualizar o badge no cabeçalho ---------- */
-function updateDomainBadge(domain) {
+/* ---------- Função para atualizar o título no cabeçalho conforme o modo ativo ---------- */
+function updateModeTitle(modeLabel) {
   const titleEl = document.getElementById('agent-title');
-  if (domain) {
-    const displayName = domain.charAt(0).toUpperCase() + domain.slice(1);
-    titleEl.textContent = `Hermes · ${displayName}`;
-  } else {
-    titleEl.textContent = 'Hermes';
-  }
+  titleEl.textContent = modeLabel ? `Hermes · ${modeLabel}` : 'Hermes';
 }
-
-/* ---------- Expor função para obter o domínio ativo (usado em chat.js) ---------- */
-window.getActiveDomain = function() {
-  for (const id of DOMAIN_CHIP_IDS) {
-    const chip = document.getElementById(id);
-    if (chip.classList.contains('active')) {
-      return id.replace('domain-', '');
-    }
-  }
-  return null;
-};
 
 /* ---------- Chip Web (toggle, não exclusivo) ---------- */
 const webToggle = document.getElementById('web-toggle');
