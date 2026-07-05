@@ -5,7 +5,13 @@
 
 const msgCol = document.getElementById('msg-col');
 const messagesEl = document.getElementById('messages');
-const input = document.getElementById('msg-input');
+// Nome distinto de propósito: ui.js já declara um `const input` no escopo
+// global (scripts clássicos compartilham o mesmo escopo de topo), então usar
+// o mesmo nome aqui causava "Identifier 'input' has already been declared"
+// ao carregar chat.js — um SyntaxError que impedia o arquivo INTEIRO de
+// rodar (nenhuma função definida, nenhum listener de envio/Enter registrado).
+// Por isso enviar mensagem não fazia nada e Enter só quebrava linha.
+const msgInput = document.getElementById('msg-input');
 const sendBtn = document.getElementById('send-btn');
 
 let typingIndicator = null;
@@ -485,7 +491,7 @@ async function sendMessageToBackend(userText, mode, projectId) {
 }
 
 function sendMessage() {
-  const text = input.value.trim();
+  const text = msgInput.value.trim();
   if (!text) return;
 
   // Determinar modo ativo
@@ -501,8 +507,8 @@ function sendMessage() {
 
   // Adiciona a mensagem do usuário imediatamente (otimista)
   addMessage('user', text);
-  input.value = '';
-  input.style.height = 'auto';
+  msgInput.value = '';
+  msgInput.style.height = 'auto';
 
   // Envia para o backend
   sendMessageToBackend(text, mode, projectId);
@@ -510,7 +516,7 @@ function sendMessage() {
 
 // Event listeners
 sendBtn.addEventListener('click', sendMessage);
-input.addEventListener('keydown', (e) => {
+msgInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
