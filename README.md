@@ -3,8 +3,6 @@
 **Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
 O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
-> **Status:** ✅ MVP concluído | ✅ V1 concluída | ✅ V2 concluído | ✅ V2.4 (instalador gráfico Windows) concluído.
-
 ---
 
 ## 📚 Sumário
@@ -36,6 +34,7 @@ O Hermes é um ambiente onde **projetos são entidades vivas**, decisões arquit
 - **Streaming SSE** e **Pensamento Visível** para total transparência
 - **Pesquisa web** integrada (via SearXNG local)
 - **RAG avançado** para código (busca semântica em funções/classes do projeto)
+- **RAG de documentos** – indexação semântica de PDFs, Markdown e TXT enviados na Galeria (por projeto ou soltos), com recuperação automática de trechos relevantes durante o chat
 - **Planejamento multi‑step explícito** (V2.2) – o Hermes gera um plano de ação antes de executar tarefas complexas, exibindo os passos e progresso em tempo real
 - **Especialização por domínio** (V2.3) – chips Firmware e Android, com ferramentas dedicadas (BLE, Gradle, validação de layouts)
 - **Instalador gráfico para Windows** (V2.4) – assistente "next, next, finish" que detecta a placa de vídeo, baixa o modelo certo e cria os atalhos, sem precisar de linha de comando
@@ -62,7 +61,7 @@ Planejador multi‑step (V2.2) – gera planos de ação para tarefas complexas
 ↓
 Tools (sandbox) – Python, Shell, arquivos, busca, indexação, firmware, BLE, Gradle, layout
 ↓
-Memória (3 camadas + RAG com FAISS para código)
+Memória (camadas + RAG com FAISS para código e para documentos)
 ↓
 Resposta final (streaming SSE + pensamento visível opcional + plano)
 ```
@@ -75,6 +74,7 @@ Resposta final (streaming SSE + pensamento visível opcional + plano)
 - Monitor de recursos em background (RAM/CPU)
 - Log de auditoria de todas as execuções de ferramentas
 - **RAG para código**: busca semântica em funções/classes indexadas via FAISS, ativada automaticamente para perguntas técnicas
+- **RAG para documentos**: PDFs, Markdown e TXT enviados na Galeria são indexados (FAISS + PyMuPDF para extração de PDF) e recuperados automaticamente quando relevantes para a pergunta ou no Modo Analista
 - **Planejador multi‑step**: gera planos de ação estruturados (passos com dependências) para tarefas complexas, com suporte a replanejamento em caso de falha
 - **Especialização por domínio**: agentes Firmware e Android com prompts e ferramentas dedicadas
 
@@ -145,14 +145,21 @@ Executadas em sandbox com restrições rigorosas:
 - **LayoutValidatorTool**: validação de layouts XML Android
 - **Log de auditoria**: todas as execuções registradas (`tool_audit.jsonl`)
 
+> O RAG de documentos (`file_rag.py`) não é uma tool chamável pelo LLM — ele roda automaticamente no `context_builder`, junto com o RAG de código, como parte da montagem de contexto.
+
 ### Memória e RAG
-Organizada em 4 camadas com prioridade de inclusão no contexto:
+Organizada em camadas com prioridade de inclusão no contexto:
 1. **Arquitetural** – decisões de design, padrões
 2. **RAG (Código relevante)** – trechos de código do projeto recuperados por similaridade semântica
-3. **Conversacional** – resumos compactos de conversas anteriores
-4. **Código** – notas sobre arquivos e trechos (menos prioritário)
+3. **RAG (Documentos da galeria)** – trechos de PDFs, Markdown e TXT recuperados por similaridade semântica
+4. **Conversacional** – resumos compactos de conversas anteriores
+5. **Código** – notas sobre arquivos e trechos (menos prioritário)
 
-O RAG é ativado automaticamente quando a mensagem do usuário contém termos técnicos (`def`, `class`, `import`, nomes de arquivo, etc.) e o projeto possui um índice FAISS. Se o índice não existir, ele é gerado sob demanda na primeira consulta.
+O RAG de código é ativado automaticamente quando a mensagem do usuário contém termos técnicos (`def`, `class`, `import`, nomes de arquivo, etc.) e o projeto possui um índice FAISS. Se o índice não existir, ele é gerado sob demanda na primeira consulta.
+
+O RAG de documentos indexa automaticamente (via `file_rag.py`) qualquer PDF, Markdown ou TXT enviado na Galeria — por projeto ou solto (`loose`) — extraindo texto (PyMuPDF para PDF), dividindo em trechos e gerando embeddings FAISS. É consultado automaticamente no Modo Analista ou quando a heurística de RAG detecta que a mensagem se beneficiaria de contexto de documentos; o índice de um arquivo é removido quando o arquivo é excluído da Galeria.
+
+> ⚠️ **Nota técnica:** `file_rag.py` depende de `PyMuPDF` (`fitz`) para extrair texto de PDFs, mas esse pacote não está listado em `backend/requirements.txt` hoje — vale adicionar `PyMuPDF` lá para não quebrar a extração de PDFs em uma instalação limpa.
 
 Escopos configuráveis por projeto: `isolated`, `isolated_read_external` ou `none`.  
 O usuário pode desabilitar a memória globalmente.
@@ -177,6 +184,11 @@ Ativado manualmente ou automaticamente para contextos de alto rigor. Processo:
 - **AndroidAgent**: especializado em desenvolvimento Android (Kotlin/Java). Tools: GradleBuildTool, LayoutValidatorTool.
 - Ativação via chips de domínio no frontend, que podem ser combinados com os modos existentes (code, engineer, analyst).
 - O agente é selecionado automaticamente se o domínio for detectado pela heurística (classificador híbrido) ou forçado pelo usuário.
+
+### CI/CD do Instalador (GitHub Actions)
+- Workflow em `.github/workflows/build-installer.yml`, disparado automaticamente ao dar push numa tag `v*` (ex.: `v2.4.0`) ou manualmente via `workflow_dispatch`.
+- Roda em `windows-latest`: instala as dependências do backend, executa `build.py` (gera o `Hermes-ia.exe`), instala o Inno Setup via Chocolatey e compila o instalador com `ISCC.exe installer\HermesSetup.iss`.
+- Publica o `Hermes-ia-Setup-<versão>.exe` resultante como artifact do workflow, pronto para download/distribuição sem precisar buildar localmente.
 
 ### Instalador Gráfico Windows (V2.4)
 - Feito em **Inno Setup** (Pascal Script), 100% em português do Brasil.
@@ -232,9 +244,10 @@ hermes-ai/
 │ │ │ ├── router.py
 │ │ │ └── context_builder.py
 │ │ ├── memory/
+│ │ │ ├── __init__.py
 │ │ │ ├── store.py
 │ │ │ ├── code_rag.py
-│ │ │ └── init.py
+│ │ │ └── file_rag.py         # NOVO — RAG de documentos da galeria (PDF/MD/TXT)
 │ │ ├── tools/
 │ │ │ ├── base.py
 │ │ │ ├── registry.py
@@ -245,18 +258,22 @@ hermes-ai/
 │ │ │ ├── codebase_index.py
 │ │ │ ├── firmware.py
 │ │ │ ├── security_static.py
-│ │ │ ├── ble_config.py       # NOVO V2.3
-│ │ │ ├── gradle_build.py     # NOVO V2.3
-│ │ │ ├── layout_validator.py # NOVO V2.3
+│ │ │ ├── ble_config.py       # V2.3
+│ │ │ ├── gradle_build.py     # V2.3
+│ │ │ ├── layout_validator.py # V2.3
 │ │ │ ├── audit.py
 │ │ │ └── indexer.py
 │ │ ├── prompts/
 │ │ │ ├── analyst_system.txt
-│ │ │ ├── firmware_agent.txt  # NOVO V2.3
-│ │ │ └── android_agent.txt   # NOVO V2.3
+│ │ │ ├── firmware_agent.txt  # V2.3
+│ │ │ └── android_agent.txt   # V2.3
+│ │ ├── tests/                # testes unitários (pytest) — segurança, tools, monitor
+│ │ │ ├── test_tools.py
+│ │ │ ├── test_sandbox_security.py
+│ │ │ └── test_monitor.py
 │ │ └── knowledge/checklists/
 │ ├── data/
-│ ├── scripts/
+│ ├── scripts/                # scripts de teste manual/integração
 │ │ ├── test_analyst_mode.py
 │ │ ├── test_engineer_mode.py
 │ │ ├── test_llm.py
@@ -267,9 +284,10 @@ hermes-ai/
 │ │ ├── test_stress_memory.py
 │ │ ├── test_thinking_visible.py
 │ │ ├── test_code_rag.py
+│ │ ├── test_file_rag.py      # NOVO — testes do RAG de documentos
 │ │ ├── test_planner.py
-│ │ ├── test_firmware_agent.py # NOVO V2.3
-│ │ └── test_android_agent.py  # NOVO V2.3
+│ │ ├── test_firmware_agent.py
+│ │ └── test_android_agent.py
 │ ├── requirements.txt
 │ └── README.md
 ├── frontend/
@@ -293,7 +311,17 @@ hermes-ai/
 │   ├── profile.js
 │   ├── notifications.js
 │   └── spheres.js
+├── .github/
+│ └── workflows/
+│   └── build-installer.yml   # CI: builda o .exe + o instalador a cada tag `v*` (GitHub Actions)
+├── main.py                   # launcher nativo do Hermes-ia.exe (pywebview + backend embutido)
+├── build.py                  # gera o .exe via PyInstaller
+├── build.bat                 # atalho Windows para o build.py
+├── make_icon.py              # gera icon.ico se não existir
+├── icon.ico
+├── requirements-windows.txt  # deps extras de empacotamento (pywebview, pyinstaller, pillow)
 ├── .gitignore
+├── LICENSE
 └── README.md
 ```
 
@@ -429,6 +457,7 @@ Hermes-ia/
 | 📁 Projetos | CRUD completo; cada projeto possui instruções, persona, arquivos, escopo de memória e chats associados. |
 | 🗂 Sidebar | Chats fixados, recentes, busca, menu de contexto (fixar, renomear, mover, arquivar, excluir). |
 | 🖼 Galeria | Visualização em grid de todos os arquivos (usuário e sistema) com download/exclusão. |
+| 📄 RAG de Documentos | PDFs, Markdown e TXT enviados na Galeria são indexados automaticamente (FAISS) e trechos relevantes são recuperados durante o chat/Modo Analista. |
 | 👤 Perfil | Personalização do tom do Hermes (personalidade, entusiasmo, emojis, memória, etc.). |
 | ⚙️ Configurações | Tema, idioma, notificações, limite de RAM, modo engenheiro (configuração e teste), ações destrutivas. |
 | 🔍 Modo Analista | Verificação rigorosa com decomposição, múltiplos candidatos, juiz, ferramentas e checklists. |
@@ -443,6 +472,7 @@ Hermes-ia/
 | 📱 Domínio Android | Agente especializado com ferramentas Gradle e validação de layouts. |
 | 🖥️ App Windows nativo | `Hermes-ia.exe` — janela própria via pywebview/WebView2, sem terminal, com splash screen inteligente. |
 | 🧙 Instalador gráfico | `Hermes-ia-Setup.exe` — detecção de GPU, download do modelo com progresso/retomada, atalhos automáticos, tudo em português. |
+| 🤖 CI/CD do instalador | GitHub Actions builda `.exe` + instalador automaticamente a cada tag `v*` e publica como artifact. |
 
 ## Roadmap
 
@@ -454,7 +484,11 @@ Hermes-ia/
 
 ✅ **V2.4** — Instalador gráfico para Windows via Inno Setup: detecção de GPU, seleção automática do modelo Qwen ideal, download com barra de progresso e retomada (BITS), verificação de espaço em disco e do WebView2 Runtime, atalhos automáticos — tudo em português do Brasil e sem exigir privilégios de administrador.
 
-🔜 **Próximo** — pacote Linux, interface por voz (STT/TTS), assinatura de código para o `.exe` e para o instalador.
+✅ **RAG de Documentos** — quinta camada de memória: indexação FAISS automática de PDFs (via PyMuPDF), Markdown e TXT enviados na Galeria, com recuperação de trechos relevantes no chat e no Modo Analista.
+
+✅ **CI/CD do Instalador** — pipeline no GitHub Actions que builda o `.exe` e o instalador a cada tag `v*` e publica como artifact, sem precisar de build manual.
+
+🔜 **Próximo** — adicionar `PyMuPDF` ao `backend/requirements.txt` (dependência do RAG de documentos ainda não declarada), pacote Linux, interface por voz (STT/TTS), assinatura de código para o `.exe` e para o instalador.
 
 ## Princípios Fundamentais
 
