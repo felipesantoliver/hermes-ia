@@ -86,6 +86,11 @@ def list_chats(scope: Optional[str] = Query(None)):
                 """SELECT * FROM chats WHERE project_id IS NULL AND archived = 0
                    ORDER BY pinned DESC, updated_at DESC"""
             )
+        elif scope == "archived":
+            cur.execute(
+                """SELECT * FROM chats WHERE archived = 1
+                   ORDER BY updated_at DESC"""
+            )
         else:
             cur.execute("SELECT * FROM chats ORDER BY pinned DESC, updated_at DESC")
         return [_row_to_chat(r) for r in cur.fetchall()]
