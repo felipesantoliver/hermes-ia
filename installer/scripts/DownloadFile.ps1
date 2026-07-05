@@ -63,18 +63,32 @@ try {
     # Inicia a transferência de forma assíncrona. O BITS cuida sozinho de
     # retomar em caso de queda de conexão (RetryInterval/RetryTimeout),
     # sem reiniciar o download do zero.
-    Start-BitsTransfer -Source $Url -Destination $Destination -DisplayName $jobName `
-        -Asynchronous -RetryInterval 60 -RetryTimeout 3600 -ErrorAction Stop | Out-Null
+    $job = Start-BitsTransfer -Source $Url -Destination $Destination -DisplayName $jobName `
+        -Asynchronous -RetryInterval 60 -RetryTimeout 3600 -ErrorAction Stop
+
+    $jobId = $job.JobId
+    $missingLookups = 0
+    $maxMissingLookups = 3  # tolera algumas consultas falhas antes de desistir
 
     do {
         Start-Sleep -Seconds 1
-        $job = Get-BitsTransfer -Name $jobName -ErrorAction SilentlyContinue
+        # Reconsulta pelo JobId (identificador único e estável) em vez do
+        # nome: logo após a criação assíncrona pode haver uma pequena janela
+        # em que o BITS ainda não indexou o job para busca por -Name, o que
+        # fazia esta consulta falhar mesmo com o download rodando normalmente.
+        $job = Get-BitsTransfer -JobId $jobId -ErrorAction SilentlyContinue
 
         if ($null -eq $job) {
-            Write-Log "ERRO: job de download desapareceu inesperadamente."
-            Write-Status "error" 0 0 0 "O processo de download foi interrompido inesperadamente."
-            exit 1
+            $missingLookups++
+            Write-Log "AVISO: consulta ao job do BITS não encontrou resultado (tentativa $missingLookups de $maxMissingLookups)."
+            if ($missingLookups -ge $maxMissingLookups) {
+                Write-Log "ERRO: job de download desapareceu inesperadamente."
+                Write-Status "error" 0 0 0 "O processo de download foi interrompido inesperadamente."
+                exit 1
+            }
+            continue
         }
+        $missingLookups = 0
 
         switch ($job.JobState) {
             "Connecting" {
