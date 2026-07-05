@@ -4,6 +4,8 @@
 # e (2) o status dos pré-requisitos de inicialização (backend/llm/db/tools)
 # consumido pela splash screen (frontend/js/spheres.js) durante o boot.
 
+import time
+
 import httpx
 from fastapi import APIRouter
 from .monitor import get_monitor
@@ -12,18 +14,35 @@ from .db import DB_PATH, db_cursor
 
 router = APIRouter(prefix="/system", tags=["system"])
 
+# Carregar um .gguf de alguns GB para a RAM/VRAM pode levar bastante tempo
+# (ainda mais na primeira vez, sem cache de disco quente, ou em CPU sem
+# AVX2). Enquanto isso, qualquer tentativa de conexão ao llama-server dá
+# "connection refused" — porque o processo só faz bind na porta depois de
+# terminar de carregar o modelo. Sem essa distinção, esse período normal de
+# carregamento parecia idêntico a "llama-server morreu/nunca vai subir", e a
+# splash mostrava um erro assustador poucos segundos depois de abrir o app.
+_llm_unavailable_since: float | None = None
+LLM_STARTUP_GRACE_PERIOD_S = 180
+
 
 def _check_llm_status() -> str:
     """Consulta um health check simples no llama-server (default). Não
     bloqueia por muito tempo: timeout curto, pois isso é chamado a cada
     poll de 500ms pela splash screen."""
+    global _llm_unavailable_since
     try:
         with httpx.Client(timeout=1.5) as client:
             resp = client.get(f"{settings.LLM_BASE_URL.rstrip('/')}/health")
-            if resp.status_code == 200:
-                return "ok"
-            return "loading"
+        _llm_unavailable_since = None  # conseguiu conectar, não está "sumido"
+        if resp.status_code == 200:
+            return "ok"
+        return "loading"
     except Exception:
+        now = time.monotonic()
+        if _llm_unavailable_since is None:
+            _llm_unavailable_since = now
+        if now - _llm_unavailable_since < LLM_STARTUP_GRACE_PERIOD_S:
+            return "loading"
         return "unavailable"
 
 
