@@ -583,6 +583,30 @@
   </div>
 </div>
 
+<!-- Modal customizado: renomear conversa (substitui window.prompt) -->
+<div id="rename-chat-modal" style="display:none; position:fixed; inset:0; z-index:90; background:rgba(0,0,0,0.4); align-items:center; justify-content:center;">
+  <div style="background:var(--bg-panel); border:1px solid var(--line); border-radius:16px; padding:24px; width:320px; max-width:90%; box-shadow:0 12px 40px rgba(0,0,0,0.6);">
+    <h3 style="margin:0 0 12px 0; font-family:var(--font-display); color:var(--text-hi);">Renomear conversa</h3>
+    <input type="text" id="rename-chat-input" placeholder="Nome da conversa" style="width:100%; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg-elevated); color:var(--text-hi); font-size:14px; margin-bottom:12px;">
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button id="cancel-rename-chat-modal" class="ghost-btn" style="padding:8px 16px;">Cancelar</button>
+      <button id="confirm-rename-chat-modal" class="primary-btn" style="padding:8px 16px;">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal customizado: confirmação genérica (substitui window.confirm, ex. excluir conversa) -->
+<div id="confirm-action-modal" style="display:none; position:fixed; inset:0; z-index:90; background:rgba(0,0,0,0.4); align-items:center; justify-content:center;">
+  <div style="background:var(--bg-panel); border:1px solid var(--line); border-radius:16px; padding:24px; width:320px; max-width:90%; box-shadow:0 12px 40px rgba(0,0,0,0.6);">
+    <h3 id="confirm-action-title" style="margin:0 0 8px 0; font-family:var(--font-display); color:var(--text-hi);">Confirmar ação</h3>
+    <p id="confirm-action-message" style="margin:0 0 16px 0; color:var(--text-mid); font-size:13.5px; line-height:1.5;"></p>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button id="cancel-confirm-action-modal" class="ghost-btn" style="padding:8px 16px;">Cancelar</button>
+      <button id="confirm-confirm-action-modal" class="primary-btn" style="padding:8px 16px; background:#e35b5b; border-color:#e35b5b;">Excluir</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="js/state.js"></script>
 <script src="js/notifications.js"></script>
