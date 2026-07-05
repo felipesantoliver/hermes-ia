@@ -193,6 +193,12 @@ def _run_backend() -> None:
             port=PORT,
             log_level="warning",
             access_log=False,
+            # Sem isso, o uvicorn tenta decidir sozinho se deve colorir os
+            # logs chamando sys.stdout.isatty() — e no .exe empacotado com
+            # --windowed não existe console, então sys.stdout é None e essa
+            # chamada explode com AttributeError (é exatamente o que aparece
+            # em backend_startup_error.log). Forçar False evita o isatty().
+            use_colors=False,
         )
         _uvicorn_server = uvicorn.Server(config)
         _uvicorn_server.run()
