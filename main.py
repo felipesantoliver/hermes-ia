@@ -113,6 +113,18 @@ def _maybe_start_llama_server() -> None:
     if not model_path.exists() or not llama_bin.exists():
         return
 
+    if not _is_port_free("127.0.0.1", 8080):
+        _show_error(
+            "A porta 8080 (usada pelo llama-server) já está ocupada por outro "
+            "programa ou por uma instância anterior do Hermes que não foi "
+            "encerrada corretamente.\n\n"
+            "O Hermes vai abrir mesmo assim, mas sem respostas do LLM até "
+            "você liberar a porta 8080 (verifique o Gerenciador de Tarefas "
+            "por 'llama-server.exe' e finalize o processo, depois reabra o "
+            "Hermes)."
+        )
+        return
+
     try:
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         _llama_process = subprocess.Popen(
@@ -166,20 +178,36 @@ def _load_backend_app():
     return module.app
 
 
+_backend_error_path = LOG_DIR / "backend_startup_error.log"
+
+
 def _run_backend() -> None:
     global _uvicorn_server
-    import uvicorn
+    try:
+        import uvicorn
 
-    backend_app = _load_backend_app()
-    config = uvicorn.Config(
-        backend_app,
-        host=HOST,
-        port=PORT,
-        log_level="warning",
-        access_log=False,
-    )
-    _uvicorn_server = uvicorn.Server(config)
-    _uvicorn_server.run()
+        backend_app = _load_backend_app()
+        config = uvicorn.Config(
+            backend_app,
+            host=HOST,
+            port=PORT,
+            log_level="warning",
+            access_log=False,
+        )
+        _uvicorn_server = uvicorn.Server(config)
+        _uvicorn_server.run()
+    except Exception:
+        # A thread do backend é daemon: se algo falhar aqui (import quebrado,
+        # dependência faltando no .exe empacotado, etc.), a exceção some em
+        # stderr (invisível no app --windowed) e o launcher só vê o timeout
+        # em _wait_backend_ready. Por isso gravamos o traceback completo em
+        # disco — é o que diferencia "porta ocupada" de "bug real no backend".
+        import traceback
+        try:
+            with open(_backend_error_path, "w", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
+        except Exception:
+            pass
 
 
 def _wait_backend_ready(timeout_s: int) -> bool:
@@ -215,16 +243,30 @@ def main() -> None:
 
     _maybe_start_llama_server()
 
+    if _backend_error_path.exists():
+        try:
+            _backend_error_path.unlink()
+        except Exception:
+            pass
+
     backend_thread = threading.Thread(target=_run_backend, daemon=True)
     backend_thread.start()
 
     if not _wait_backend_ready(BACKEND_READY_TIMEOUT_S):
-        _show_error(
-            "Erro ao iniciar o Hermes.\n\n"
-            "Verifique se a porta 8000 está livre e se o modelo está em "
-            "models/hermes-core.gguf.\n\n"
-            "Consulte data/logs/ para mais detalhes."
-        )
+        if _backend_error_path.exists():
+            _show_error(
+                "Erro ao iniciar o Hermes.\n\n"
+                "O backend travou durante a inicialização.\n\n"
+                f"Detalhes completos em:\n{_backend_error_path}"
+            )
+        else:
+            _show_error(
+                "Erro ao iniciar o Hermes.\n\n"
+                "O backend não respondeu a tempo. Verifique se a porta 8000 "
+                "está livre e se o modelo está em models/hermes-core.gguf.\n\n"
+                f"Se o problema persistir, verifique {_backend_error_path} "
+                "após a próxima tentativa."
+            )
         sys.exit(1)
 
     import webview
