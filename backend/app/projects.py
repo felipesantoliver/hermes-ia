@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .db import db_cursor, new_id, now_iso, PROJECTS_FILES_DIR
 from .memory import store as memory_store
-from .memory.context_builder import build_memory_context
+from .orchestrator.context_builder import build_memory_context
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
