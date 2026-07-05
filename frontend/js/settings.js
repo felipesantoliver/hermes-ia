@@ -50,7 +50,85 @@
 
       item.classList.add('active');
       document.getElementById('panel-' + item.dataset.panel).classList.add('active');
+
+      if (item.dataset.panel === 'dados') {
+        renderArchivedChats();
+      }
     });
+  });
+
+  /* ---------- Conversas arquivadas ---------- */
+  const archivedChatsList = document.getElementById('archived-chats-list');
+
+  function escapeHtmlSettings(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  }
+
+  async function renderArchivedChats() {
+    archivedChatsList.innerHTML = `<div class="chat-list-empty">Carregando…</div>`;
+    try {
+      const res = await fetch(`${API()}/chats/?scope=archived`);
+      if (!res.ok) throw new Error('Falha ao buscar conversas arquivadas');
+      const archived = await res.json();
+
+      archivedChatsList.innerHTML = '';
+      if (archived.length === 0) {
+        archivedChatsList.innerHTML = `<div class="chat-list-empty">Nenhuma conversa arquivada</div>`;
+        return;
+      }
+
+      archived.forEach((chat) => {
+        const row = document.createElement('div');
+        row.className = 'settings-row';
+        row.innerHTML = `
+          <div>
+            <div class="settings-row-title">${escapeHtmlSettings(chat.title)}</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="ghost-btn archived-open-btn" style="padding:6px 12px; font-size:13px;">Abrir</button>
+            <button class="ghost-btn archived-unarchive-btn" style="padding:6px 12px; font-size:13px;">Desarquivar</button>
+          </div>
+        `;
+
+        row.querySelector('.archived-open-btn').addEventListener('click', () => {
+          if (window.HermesChats) {
+            window.HermesChats.loadChat(chat);
+            window.HermesChats.showView('chat');
+            closeSettings();
+          }
+        });
+
+        row.querySelector('.archived-unarchive-btn').addEventListener('click', async () => {
+          try {
+            const patchRes = await fetch(`${API()}/chats/${chat.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ archived: false }),
+            });
+            if (!patchRes.ok) throw new Error('Falha ao desarquivar');
+            if (window.HermesChats) window.HermesChats.renderSidebar();
+            renderArchivedChats();
+          } catch (err) {
+            console.error('[Hermes] Erro ao desarquivar conversa:', err);
+          }
+        });
+
+        archivedChatsList.appendChild(row);
+      });
+    } catch (err) {
+      console.error('[Hermes] Erro ao carregar conversas arquivadas:', err);
+      archivedChatsList.innerHTML = `<div class="chat-list-empty">Erro ao carregar conversas arquivadas</div>`;
+    }
+  }
+
+  // Atualiza a lista de arquivadas sempre que um chat é arquivado/desarquivado
+  // em outro lugar do app (ex. menu de contexto na sidebar).
+  document.addEventListener('hermes:chats-changed', () => {
+    if (document.getElementById('panel-dados').classList.contains('active')) {
+      renderArchivedChats();
+    }
   });
 
   /* ---------- Aparência (claro / escuro / sistema) ---------- */
