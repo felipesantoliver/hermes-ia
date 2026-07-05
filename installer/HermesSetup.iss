@@ -489,8 +489,8 @@ begin
       MsgBox(
         'O download do motor de IA não terminou dentro do tempo esperado.' + #13#10 +
         'Verifique sua conexão. O Hermes AI foi instalado, mas o chat não vai ' +
-        'funcionar até o llama-server ser instalado (manualmente, se preciso) em:' +
-        #13#10 + ExpandConstant('{app}'), mbError, MB_OK)
+        'funcionar até o llama-server ser instalado (manualmente, se preciso) em:' + #13#10 +
+        ExpandConstant('{app}'), mbError, MB_OK)
     else
       DownloadPage.SetText('Motor de IA instalado!', '');
   finally
