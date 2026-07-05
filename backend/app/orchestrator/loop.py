@@ -9,7 +9,7 @@ from ..tools.registry import get_tool, list_tools
 from ..tools.base import ToolResult
 from ..config import settings
 from ..db import DATA_DIR
-from ..memory.context_builder import build_memory_context
+from .context_builder import build_memory_context
 from ..monitor import get_monitor, HEAVY_TOOL_NAMES
 from .analyst import AnalystOrchestrator
 from .planner import Planner, Plan, PlanStep
