@@ -72,7 +72,7 @@ var
 const
   WV2ClientGuid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
   WV2BootstrapperUrl = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703';
-  ModelBaseUrl = 'https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/';
+  ModelBaseUrl = 'https://huggingface.co/QuantFactory/Qwen2.5-7B-Instruct-abliterated-v2-GGUF/resolve/main/';
   MaxDownloadWaitSeconds = 4 * 60 * 60;
 
 function RunCaptureToFile(const CmdLine, OutFile: String): Boolean;
@@ -158,29 +158,29 @@ begin
   Result := True;
   case Index of
     0: begin
-         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-Q8_0.gguf';
+         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-abliterated-v2.Q8_0.gguf';
          SizeMB := 8100;
-         Label_ := 'Qwen2.5-7B-Instruct-Q8_0 (alta qualidade, ~8.1 GB)';
+         Label_ := 'Qwen2.5-7B-Instruct-abliterated-v2-Q8_0 (alta qualidade, ~8.1 GB)';
        end;
     1: begin
-         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-Q4_K_M.gguf';
+         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-abliterated-v2.Q4_K_M.gguf';
          SizeMB := 4700;
-         Label_ := 'Qwen2.5-7B-Instruct-Q4_K_M (equilibrado, ~4.7 GB)';
+         Label_ := 'Qwen2.5-7B-Instruct-abliterated-v2-Q4_K_M (equilibrado, ~4.7 GB)';
        end;
     2: begin
-         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-Q2_K.gguf';
+         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-abliterated-v2.Q2_K.gguf';
          SizeMB := 3100;
-         Label_ := 'Qwen2.5-7B-Instruct-Q2_K (mais leve, ~3.1 GB)';
+         Label_ := 'Qwen2.5-7B-Instruct-abliterated-v2-Q2_K (mais leve, ~3.1 GB)';
        end;
     3: begin
-         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-Q2_K.gguf';
+         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-abliterated-v2.Q2_K.gguf';
          SizeMB := 3100;
-         Label_ := 'Qwen2.5-7B-Instruct-Q2_K (recomendado para CPU, ~3.1 GB)';
+         Label_ := 'Qwen2.5-7B-Instruct-abliterated-v2-Q2_K (recomendado para CPU, ~3.1 GB)';
        end;
     4: begin
-         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-Q4_K_M.gguf';
+         Url := ModelBaseUrl + 'Qwen2.5-7B-Instruct-abliterated-v2.Q4_K_M.gguf';
          SizeMB := 4700;
-         Label_ := 'Qwen2.5-7B-Instruct-Q4_K_M (opção segura, ~4.7 GB)';
+         Label_ := 'Qwen2.5-7B-Instruct-abliterated-v2-Q4_K_M (opção segura, ~4.7 GB)';
        end;
   else
     Result := False;
