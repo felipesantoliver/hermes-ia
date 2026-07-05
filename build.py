@@ -95,12 +95,33 @@ def _run_pyinstaller() -> None:
         "--add-data", f"frontend{sep}frontend",
         "--add-data", f"backend{sep}backend",
         "--hidden-import", "pywebview",
-        "--hidden-import", "fastapi",
+        # FastAPI/Starlette fazem vários imports que a análise estática do
+        # PyInstaller não segue de forma confiável (ex.: fastapi.middleware.cors
+        # some do build mesmo sendo um "from ... import" explícito no código).
+        # --collect-submodules resolve isso pegando a árvore inteira, em vez
+        # de irmos caçando um ModuleNotFoundError por vez a cada rebuild.
+        "--collect-submodules", "fastapi",
+        "--collect-submodules", "starlette",
         "--hidden-import", "uvicorn",
+        "--collect-submodules", "uvicorn",
         "--hidden-import", "uvicorn.lifespan.on",
         "--hidden-import", "uvicorn.protocols.http.auto",
         "--hidden-import", "uvicorn.protocols.websockets.auto",
         "--hidden-import", "uvicorn.loops.auto",
+        # pydantic (core em Rust/compilado) e python-multipart (usado pelo
+        # FastAPI para UploadFile/Form) têm o mesmo tipo de problema.
+        "--collect-submodules", "pydantic",
+        "--hidden-import", "multipart",
+        # sentence-transformers/faiss/transformers/torch são notórios por
+        # dependências carregadas dinamicamente (plugins, backends,
+        # tokenizers) que o PyInstaller não enxerga sozinho. --collect-all
+        # inclui também dados/arquivos auxiliares, não só código.
+        "--collect-all", "sentence_transformers",
+        "--collect-all", "transformers",
+        "--collect-all", "tokenizers",
+        "--collect-all", "huggingface_hub",
+        "--collect-all", "torch",
+        "--collect-all", "faiss",
         "main.py",
     ]
     print("🔨 Rodando PyInstaller:\n   " + " ".join(cmd))
