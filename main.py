@@ -127,6 +127,12 @@ def _maybe_start_llama_server() -> None:
 
     try:
         creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        # Antes isso ia pro DEVNULL: se o llama-server travasse ao subir (DLL
+        # faltando, variante Vulkan incompatível com a GPU, etc.) não sobrava
+        # nenhum rastro — parecia exatamente igual a "ainda carregando o
+        # modelo". Agora gravamos tudo em data/logs/llama-server.log.
+        llama_log_path = LOG_DIR / "llama-server.log"
+        llama_log = open(llama_log_path, "a", encoding="utf-8", errors="replace")
         _llama_process = subprocess.Popen(
             [
                 str(llama_bin),
@@ -137,8 +143,8 @@ def _maybe_start_llama_server() -> None:
             ],
             cwd=str(APP_DIR),
             creationflags=creationflags,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=llama_log,
+            stderr=subprocess.STDOUT,
         )
     except Exception as e:
         _show_error(
