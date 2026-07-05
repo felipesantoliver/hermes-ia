@@ -300,11 +300,32 @@ def main() -> None:
         _stop_llama_server()
         if _uvicorn_server is not None:
             _uvicorn_server.should_exit = True
+
+        # Em teoria, depois que a janela fecha, webview.start() retorna,
+        # main() termina e o processo Python sai sozinho (a thread do
+        # backend é daemon, não seguraria o processo vivo). Na prática,
+        # em apps empacotados com PyInstaller --windowed, isso às vezes
+        # não acontece de forma confiável (o processo do .exe continua
+        # vivo em segundo plano mesmo com a janela já fechada). Em vez de
+        # confiar que a saída "natural" sempre vai rolar, garantimos: se o
+        # processo ainda estiver de pé alguns segundos depois do clique no
+        # X, forçamos o encerramento total. _stop_llama_server() e o
+        # should_exit acima já rodaram, então não há nada de sujo em
+        # deixar para trás ao usar os._exit aqui.
+        def _force_exit_if_still_running():
+            time.sleep(3)
+            os._exit(0)
+
+        threading.Thread(target=_force_exit_if_still_running, daemon=True).start()
         return True
 
     window.events.closing += _on_closing
 
     webview.start(gui="edgechromium", debug=False)
+
+    # Caminho normal: a janela fechou, webview.start() retornou e não
+    # precisamos esperar a thread-relógio do closing handler — saímos já.
+    os._exit(0)
 
 
 if __name__ == "__main__":

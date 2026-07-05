@@ -147,8 +147,13 @@ def main() -> None:
     print(
         "\nPróximos passos:\n"
         f"  1. Copie a pasta models/ (com hermes-core.gguf) para {DIST_DIR}/models/\n"
-        f"  2. Rode {DIST_DIR}/Hermes-ia.exe e confirme que abre sem terminal\n"
-        "  3. (Opcional) rode install.ps1 para criar atalhos, ou distribua a "
+        f"  2. Copie llama-server.exe (+ DLLs) para {DIST_DIR}/llama-server.exe — "
+        "sem isso _maybe_start_llama_server() no main.py desiste em silêncio e o "
+        "chat não vai responder. Baixe em: "
+        "https://github.com/ggml-org/llama.cpp/releases "
+        "(pacote 'llama-<tag>-bin-win-cpu-x64.zip' ou '...-win-vulkan-x64.zip')\n"
+        f"  3. Rode {DIST_DIR}/Hermes-ia.exe e confirme que abre sem terminal\n"
+        "  4. (Opcional) rode install.ps1 para criar atalhos, ou distribua a "
         "pasta dist/ inteira como está."
     )
 

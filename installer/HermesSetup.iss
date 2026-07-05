@@ -41,6 +41,7 @@ Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 Source: "scripts\DownloadFile.ps1"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "scripts\DownloadLlamaServer.ps1"; DestDir: "{tmp}"; Flags: dontcopy
 
 [Dirs]
 Name: "{app}\models"
@@ -183,6 +184,20 @@ begin
        end;
   else
     Result := False;
+  end;
+end;
+
+function GetLlamaVariant(Index: Integer): String;
+begin
+  { llama-server precisa de um binário compatível com a GPU. Usamos Vulkan
+    para as duas faixas de GPU dedicada (funciona em NVIDIA e AMD sem exigir
+    a instalação separada do runtime CUDA) e CPU para os demais casos —
+    incluindo "não sei", por segurança, já que rodar em CPU sempre funciona,
+    só que mais devagar. }
+  case Index of
+    0, 1: Result := 'vulkan';
+  else
+    Result := 'cpu';
   end;
 end;
 
@@ -410,6 +425,79 @@ begin
   end;
 end;
 
+procedure DownloadLlamaServerWithProgress;
+var
+  ScriptPath, StatusPath, Cmd, Variant: String;
+  StatusJson: AnsiString;
+  DecodedJson, State, Msg: String;
+  Percent: Integer;
+  ResultCode: Integer;
+  Elapsed: Integer;
+begin
+  ExtractTemporaryFile('DownloadLlamaServer.ps1');
+  ScriptPath := ExpandConstant('{tmp}\DownloadLlamaServer.ps1');
+  StatusPath := ExpandConstant('{tmp}\hermes_llama_status.json');
+  Variant := GetLlamaVariant(GetSelectedGpuIndex());
+  DeleteFile(StatusPath);
+
+  Cmd := Format(
+    '-NoProfile -ExecutionPolicy Bypass -File "%s" -Variant "%s" -DestDir "%s" -StatusFile "%s" -LogFile "%s"', [
+    ScriptPath, Variant, ExpandConstant('{app}'), StatusPath, LogFilePath]);
+
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Cmd, '',
+              SW_HIDE, ewNoWait, ResultCode) then
+  begin
+    MsgBox('Não foi possível iniciar o download do motor de IA (llama-server).', mbError, MB_OK);
+    Exit;
+  end;
+
+  DownloadPage.SetText('Baixando o motor de IA (llama-server)...', '');
+  DownloadPage.SetProgress(0, 100);
+  DownloadPage.Show;
+  try
+    State := '';
+    Elapsed := 0;
+    { O pacote do llama-server é bem menor que o modelo (dezenas/poucas
+      centenas de MB), então usamos o mesmo teto de segurança do modelo,
+      mas na prática ele termina bem antes disso. }
+    repeat
+      Sleep(1000);
+      Inc(Elapsed);
+
+      if LoadStringFromFile(StatusPath, StatusJson) then
+      begin
+        DecodedJson := Utf8ToUnicode(StatusJson);
+        State := ExtractJsonValue(DecodedJson, 'state');
+        Percent := StrToIntDef(ExtractJsonValue(DecodedJson, 'percent'), 0);
+        Msg := ExtractJsonValue(DecodedJson, 'message');
+
+        DownloadPage.SetProgress(Percent, 100);
+        DownloadPage.SetText('Baixando o motor de IA... (' + IntToStr(Percent) + '%)', Msg);
+      end;
+    until (State = 'done') or (State = 'error') or (Elapsed >= MaxDownloadWaitSeconds);
+
+    if State = 'error' then
+      MsgBox(
+        'Ocorreu um erro ao baixar o motor de IA (llama-server).' + #13#10 +
+        'Detalhes: ' + Msg + #13#10#13#10 +
+        'Log completo em: ' + LogFilePath + #13#10#13#10 +
+        'O Hermes AI foi instalado, mas o chat não vai funcionar até você ' +
+        'instalar o llama-server manualmente (releases em ' +
+        'https://github.com/ggml-org/llama.cpp/releases) em:' + #13#10 +
+        ExpandConstant('{app}'), mbError, MB_OK)
+    else if State <> 'done' then
+      MsgBox(
+        'O download do motor de IA não terminou dentro do tempo esperado.' + #13#10 +
+        'Verifique sua conexão. O Hermes AI foi instalado, mas o chat não vai ' +
+        'funcionar até o llama-server ser instalado (manualmente, se preciso) em:' +
+        #13#10 + ExpandConstant('{app}'), mbError, MB_OK)
+    else
+      DownloadPage.SetText('Motor de IA instalado!', '');
+  finally
+    DownloadPage.Hide;
+  end;
+end;
+
 procedure InitializeWizard;
 var
   DetectedIndex: Integer;
@@ -448,7 +536,7 @@ begin
   DownloadCheckBox.Left := 0;
   DownloadCheckBox.Top := ModelInfoLabel.Top + 40;
   DownloadCheckBox.Width := DownloadOptPage.SurfaceWidth;
-  DownloadCheckBox.Caption := 'Baixar o modelo agora (recomendado)';
+  DownloadCheckBox.Caption := 'Baixar o modelo e o motor de IA agora (recomendado)';
   DownloadCheckBox.Checked := True;
 
   SkipInfoLabel := TNewStaticText.Create(DownloadOptPage);
@@ -459,8 +547,10 @@ begin
   SkipInfoLabel.WordWrap := True;
   SkipInfoLabel.Caption :=
     'Se preferir pular esta etapa (ex.: internet lenta), o Hermes AI será instalado ' +
-    'sem o modelo. Depois, basta baixar o arquivo .gguf e colocá-lo em ' +
-    '"models\hermes-core.gguf" dentro da pasta de instalação.';
+    'sem o modelo e sem o motor de IA (llama-server). Depois, baixe o arquivo .gguf e ' +
+    'coloque em "models\hermes-core.gguf", e baixe o llama-server em ' +
+    'github.com/ggml-org/llama.cpp/releases, extraindo o conteúdo direto na pasta ' +
+    'de instalação (ao lado de Hermes-ia.exe).';
 
   DownloadPage := CreateOutputProgressPage(
     'Baixando o modelo de IA',
@@ -484,10 +574,11 @@ begin
   begin
     if not DownloadCheckBox.Checked then
       WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 +
-        'Lembre-se: você optou por não baixar o modelo de IA agora.' + #13#10 +
-        'Baixe manualmente e coloque o arquivo em:' + #13#10 +
-        ExpandConstant('{app}') + '\models\hermes-core.gguf' + #13#10#13#10 +
-        'Modelo recomendado: ' + SelectedModelUrl;
+        'Lembre-se: você optou por não baixar o modelo de IA e o motor de IA agora.' + #13#10 +
+        'Modelo (.gguf) recomendado: ' + SelectedModelUrl + #13#10 +
+        'Coloque-o em: ' + ExpandConstant('{app}') + '\models\hermes-core.gguf' + #13#10#13#10 +
+        'Motor de IA (llama-server): baixe em github.com/ggml-org/llama.cpp/releases ' +
+        'e extraia o conteúdo direto em: ' + ExpandConstant('{app}');
   end;
 end;
 
@@ -501,7 +592,9 @@ begin
   if (CurPageID = DownloadOptPage.ID) and DownloadCheckBox.Checked then
   begin
     Drive := ExtractFileDrive(WizardDirValue);
-    RequiredMB := SelectedModelSizeMB + 500;
+    { +500 MB de folga para arquivos do programa/logs, +300 MB para o
+      pacote do llama-server (bem menor que o modelo, mas soma). }
+    RequiredMB := SelectedModelSizeMB + 500 + 300;
     if not HasEnoughDiskSpace(Drive, RequiredMB) then
     begin
       MsgBox(
@@ -521,6 +614,9 @@ begin
     EnsureWebView2;
 
     if DownloadCheckBox.Checked then
+    begin
       DownloadModelWithProgress;
+      DownloadLlamaServerWithProgress;
+    end;
   end;
 end;
