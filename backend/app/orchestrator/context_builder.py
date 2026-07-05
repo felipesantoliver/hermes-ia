@@ -12,8 +12,8 @@
 
 from typing import Optional, List
 from ..config import settings
-from . import store
-from .code_rag import retrieve  # import existente
+from ..memory import store
+from ..memory.code_rag import retrieve  # import existente
 from ..memory.file_rag import search_documents   # <-- NOVO
 import logging
 
