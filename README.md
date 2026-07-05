@@ -3,6 +3,8 @@
 **Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
 O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
+> **Status:** ✅ MVP concluído | ✅ V1 concluída | ✅ V2 concluído | ✅ V2.4 (instalador gráfico Windows) concluído | ✅ RAG de documentos da galeria (PDF/Markdown/TXT) concluído | ✅ CI/CD do instalador via GitHub Actions concluído.
+
 ---
 
 ## 📚 Sumário
@@ -488,7 +490,7 @@ Hermes-ia/
 
 ✅ **CI/CD do Instalador** — pipeline no GitHub Actions que builda o `.exe` e o instalador a cada tag `v*` e publica como artifact, sem precisar de build manual.
 
-🔜 **Próximo** — adicionar `PyMuPDF` ao `backend/requirements.txt` (dependência do RAG de documentos ainda não declarada), pacote Linux, interface por voz (STT/TTS), assinatura de código para o `.exe` e para o instalador.
+🔜 **Próximo** — adicionar `PyMuPDF` ao `backend/requirements.txt` (dependência do RAG de documentos ainda não declarada), interface por voz (STT/TTS), assinatura de código para o `.exe` e para o instalador.
 
 ## Princípios Fundamentais
 
