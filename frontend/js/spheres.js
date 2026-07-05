@@ -89,7 +89,14 @@
 
   const MIN_SPLASH_MS = 3000;
   const POLL_INTERVAL_MS = 500;
-  const SAFETY_TIMEOUT_MS = 15000;
+  // Carregar um modelo local de alguns GB pode legitimamente levar mais de
+  // 15s (principalmente na primeira vez, em CPU, ou com HD/SSD lento) — o
+  // valor antigo (15000) disparava esse timeout enquanto o llm ainda estava
+  // em "loading" normal, fazendo a splash parecer quebrada sem estar.
+  // O backend (system.py) já dá até 3min de tolerância antes de considerar
+  // o llm de fato "unavailable"; aqui damos uma folga um pouco maior só
+  // como rede de segurança final.
+  const SAFETY_TIMEOUT_MS = 200000;
 
   const STEP_LABELS = {
     backend: 'Conectando ao núcleo…',
@@ -213,7 +220,7 @@
   // independente do tempo mínimo de 3s.
   safetyTimer = setTimeout(() => {
     if (finished) return;
-    setLabel('Timeout – verifique o terminal.');
+    setLabel('Isso está demorando mais que o esperado. Verifique o terminal do backend, ou continue mesmo assim.');
     retryBtn.style.display = 'inline-flex';
     continueBtn.style.display = 'inline-flex';
   }, SAFETY_TIMEOUT_MS);
