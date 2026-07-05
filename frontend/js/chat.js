@@ -395,7 +395,10 @@ async function runStreamingChat(chatPayload) {
  */
 async function sendMessageToBackend(userText, mode, projectId) {
   // Obtém o domínio ativo (se disponível)
-  const domain = window.getActiveDomain ? window.getActiveDomain() : null;
+  // O domínio (firmware/android/etc.) não é mais escolhido manualmente pelo
+  // usuário: o backend detecta automaticamente o agente ideal a partir da
+  // mensagem (ver HybridAgentRouter em orchestrator/router.py).
+  const domain = null;
 
   if (mode === 'analyst') {
     showAnalystIndicator();
