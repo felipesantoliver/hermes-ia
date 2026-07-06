@@ -60,9 +60,13 @@ async def _build_chat_context(payload: ChatRequest) -> dict:
         profile = cur.fetchone()
 
     # 3. Construir system prompt base
-    system_prompt = "Você é o Hermes, um assistente de IA local focado em engenharia e desenvolvimento. " \
-                    "Sua missão é ajudar o usuário a construir software, firmware e sistemas. " \
-                    "Responda de forma clara, técnica e direta."
+    system_prompt = "Você é o Hermes, um assistente de IA local. Você é generalista e pode ajudar " \
+                    "com qualquer assunto que o usuário trouxer, mas foi otimizado e se destaca " \
+                    "especialmente em engenharia, desenvolvimento de software, firmware e sistemas. " \
+                    "Responda de forma clara e direta. " \
+                    "Responda sempre em português do Brasil, mesmo que parte do contexto, dos documentos " \
+                    "ou da pergunta esteja em outro idioma, a menos que o usuário peça explicitamente " \
+                    "para responder em outro idioma."
 
     # Adicionar seção derivada do perfil do usuário (nome, apelido, sobre,
     # personalidade, acolhimento/entusiasmo/emojis, filtro de conteúdo) —
