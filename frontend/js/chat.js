@@ -21,13 +21,16 @@ let planCard = null; // referência ao card do plano ativo
  * Adiciona uma mensagem na conversa.
  * @param {'user'|'hermes'} role
  * @param {string} text
+ * @param {string} [messageId] - id da mensagem no backend (permite editar depois)
+ * @returns {HTMLElement} o elemento .msg criado
  */
-function addMessage(role, text) {
+function addMessage(role, text, messageId) {
   const emptyState = document.getElementById('empty-state');
   if (emptyState) emptyState.remove();
 
   const msg = document.createElement('div');
   msg.className = 'msg ' + role;
+  msg.dataset.messageId = messageId || '';
 
   const avatar = document.createElement('div');
   avatar.className = 'avatar ' + (role === 'user' ? 'user' : 'hermes');
@@ -43,14 +46,32 @@ function addMessage(role, text) {
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.textContent = text;
+  if (role === 'user') {
+    bubble.textContent = text;
+  } else {
+    bubble.innerHTML = renderMarkdown(text);
+  }
   bubbleWrap.appendChild(bubble);
+
+  // Mensagens do usuário podem ser editadas (edição reenvia e "ramifica"
+  // a conversa, cortando tudo que veio depois — ver startEditingMessage).
+  if (role === 'user') {
+    const editBtn = document.createElement('button');
+    editBtn.className = 'msg-edit-btn';
+    editBtn.type = 'button';
+    editBtn.title = 'Editar mensagem';
+    editBtn.textContent = '✎';
+    editBtn.addEventListener('click', () => startEditingMessage(msg, bubble));
+    bubbleWrap.appendChild(editBtn);
+  }
 
   msg.appendChild(avatar);
   msg.appendChild(bubbleWrap);
   msgCol.appendChild(msg);
 
   messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  return msg;
 }
 
 /** Remove o indicador de "digitando" se existir */
@@ -272,14 +293,90 @@ function escapeHtml(str) {
 }
 
 /**
+ * Converte markdown em HTML seguro usando marked.js + DOMPurify (carregados
+ * localmente em js/vendor/). Caso as libs não tenham carregado por algum
+ * motivo (arquivo ausente, erro de parse, etc.), cai de volta para texto
+ * puro escapado — nunca quebra a renderização da conversa.
+ * @param {string} text
+ * @returns {string} HTML pronto para innerHTML
+ */
+function renderMarkdown(text) {
+  const raw = text || '';
+  try {
+    if (typeof window.marked === 'undefined' || typeof window.DOMPurify === 'undefined') {
+      throw new Error('marked/DOMPurify indisponíveis');
+    }
+    const dirtyHtml = window.marked.parse(raw, { breaks: true });
+    return window.DOMPurify.sanitize(dirtyHtml);
+  } catch (err) {
+    // Fallback: texto puro escapado (sem formatação, mas nunca quebra)
+    return escapeHtml(raw).replace(/\n/g, '<br>');
+  }
+}
+
+/**
  * Conecta em POST /chat/stream e processa os eventos SSE.
  * Agora suporta eventos "plan", "step_start", "step_progress", "step_done", "step_failed".
  */
+// Configuração do reprocessamento de markdown durante o streaming: reparsear
+// a cada token seria caro (marked+DOMPurify a cada char) e ainda instável,
+// pois tags markdown abertas no meio (ex: "**negri" sem fechar) podem gerar
+// HTML inconsistente por 1 frame. Por isso reprocessamos a cada N tokens OU
+// após um pequeno debounce de inatividade — o que vier primeiro.
+const MARKDOWN_RENDER_EVERY_N_TOKENS = 8;
+const MARKDOWN_RENDER_DEBOUNCE_MS = 120;
+
+/**
+ * Cria um "agendador" de re-render de markdown para uma bolha específica.
+ * Chame `.onToken()` a cada token recebido e `.flush()` ao final do stream
+ * para garantir que o conteúdo final sempre reflita o markdown completo.
+ */
+function createMarkdownRenderScheduler(getBubble, getText) {
+  let tokensSinceRender = 0;
+  let debounceTimer = null;
+
+  function render() {
+    const bubble = getBubble();
+    if (!bubble) return;
+    bubble.innerHTML = renderMarkdown(getText());
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function clearDebounce() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+  }
+
+  return {
+    onToken() {
+      tokensSinceRender += 1;
+      clearDebounce();
+      if (tokensSinceRender >= MARKDOWN_RENDER_EVERY_N_TOKENS) {
+        tokensSinceRender = 0;
+        render();
+      } else {
+        debounceTimer = setTimeout(() => {
+          tokensSinceRender = 0;
+          render();
+        }, MARKDOWN_RENDER_DEBOUNCE_MS);
+      }
+    },
+    flush() {
+      clearDebounce();
+      tokensSinceRender = 0;
+      render();
+    },
+  };
+}
+
 async function runStreamingChat(chatPayload) {
   let hermesBubble = null;
   let thinkingPre = null;
   let thinkingText = '';
   let hermesText = '';
+  const mdScheduler = createMarkdownRenderScheduler(() => hermesBubble, () => hermesText);
 
   let streamRes;
   try {
@@ -343,8 +440,7 @@ async function runStreamingChat(chatPayload) {
           if (data.token) {
             if (!hermesBubble) hermesBubble = createHermesBubble();
             hermesText += data.token;
-            hermesBubble.textContent = hermesText;
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            mdScheduler.onToken();
           }
         } else if (data.status === 'in_progress' && data.token) {
           // Atualiza progresso com tokens (pode ser usado para streaming dentro do passo)
@@ -366,14 +462,13 @@ async function runStreamingChat(chatPayload) {
       } else if (eventType === 'token' && typeof data.token === 'string') {
         if (!hermesBubble) hermesBubble = createHermesBubble();
         hermesText += data.token;
-        hermesBubble.textContent = hermesText;
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        mdScheduler.onToken();
       } else if (eventType === 'system' && typeof data.message === 'string') {
         window.HermesNotifications.notify('Hermes AI', data.message);
       } else if (eventType === 'error') {
         if (!hermesBubble) hermesBubble = createHermesBubble();
         hermesText += `\n❌ ${data.error || 'Falha na comunicação'}`;
-        hermesBubble.textContent = hermesText;
+        mdScheduler.flush();
       }
       // evento "done" apenas sinaliza o fim
     }
@@ -383,18 +478,20 @@ async function runStreamingChat(chatPayload) {
     return null;
   }
 
+  // Garante que o markdown final (com o texto completo) seja renderizado,
+  // independentemente de estarmos no meio de um debounce/contagem de tokens.
+  mdScheduler.flush();
+
   return hermesText;
 }
 
 /**
- * Envia a mensagem para o backend e processa a resposta.
- * Tenta primeiro o streaming em tempo real (POST /chat/stream); se o
- * navegador não suportar ReadableStream, ou a conexão falhar antes de
- * qualquer token chegar, cai automaticamente para o endpoint tradicional
- * (POST /chat/), que continua funcionando como antes.
+ * Executa a chamada ao agente (streaming com fallback) para um turno de
+ * chat já com o chat_id e a mensagem do usuário persistidos. Compartilhada
+ * entre o envio normal (sendMessageToBackend) e o reenvio após edição de
+ * uma mensagem (resendEditedMessage).
  */
-async function sendMessageToBackend(userText, mode, projectId) {
-  // Obtém o domínio ativo (se disponível)
+async function runChatTurnAndRenderReply(chatId, userText, mode, projectId, attachmentIds) {
   // O domínio (firmware/android/etc.) não é mais escolhido manualmente pelo
   // usuário: o backend detecta automaticamente o agente ideal a partir da
   // mensagem (ver HybridAgentRouter em orchestrator/router.py).
@@ -409,6 +506,80 @@ async function sendMessageToBackend(userText, mode, projectId) {
 
   const supportsStreaming = typeof ReadableStream !== 'undefined' && !!window.fetch;
 
+  try {
+    const chatPayload = {
+      message: userText,
+      mode: mode || null,
+      domain: domain || null,
+      project_id: projectId || null,
+      chat_id: chatId,
+      // Pensamento visível: ativado apenas no modo analista
+      show_thinking: mode === 'analyst',
+      web_search: !!window.HermesState.webSearchEnabled,
+      // IDs dos arquivos anexados (upload por clique ou drag-and-drop) que
+      // devem ser incluídos no contexto desta mensagem pelo backend.
+      attachment_ids: (attachmentIds && attachmentIds.length) ? attachmentIds : null,
+    };
+
+    let hermesReply = null;
+
+    // 1. Tenta streaming primeiro
+    if (supportsStreaming) {
+      hermesReply = await runStreamingChat(chatPayload);
+    }
+
+    // 2. Fallback: endpoint tradicional (sem streaming), se o stream não
+    // produziu nenhum token (navegador sem suporte, erro de conexão, etc.)
+    if (hermesReply === null) {
+      const chatRes = await fetch(`${window.HermesState.API_BASE}/chat/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(chatPayload),
+      });
+      if (!chatRes.ok) {
+        const errData = await chatRes.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Erro ao processar mensagem');
+      }
+      const data = await chatRes.json();
+      hermesReply = data.reply;
+      removeTypingIndicator();
+      addMessage('hermes', hermesReply);
+    }
+
+    // 3. Remover indicador de digitação (caso ainda esteja visível)
+    removeTypingIndicator();
+
+    // 4. Notificar (se o usuário tiver ativado notificações push)
+    if (window.HermesNotifications) {
+      window.HermesNotifications.notify('Hermes', 'Sua resposta está pronta.');
+    }
+
+    // 5. A resposta do Hermes já foi salva pelo backend (tanto na rota
+    // tradicional quanto na rota de streaming), não precisamos salvar de novo.
+
+  } catch (error) {
+    console.error('[Hermes] Erro no envio:', error);
+    removeTypingIndicator();
+    // Exibe erro como mensagem do Hermes (sem alert)
+    addMessage('hermes', `❌ Ocorreu um erro: ${error.message || 'Falha na comunicação'}. Tente novamente.`);
+  } finally {
+    if (window.HermesSphere) window.HermesSphere.setGenerating(false);
+  }
+}
+
+/**
+ * Envia a mensagem para o backend e processa a resposta.
+ * Tenta primeiro o streaming em tempo real (POST /chat/stream); se o
+ * navegador não suportar ReadableStream, ou a conexão falhar antes de
+ * qualquer token chegar, cai automaticamente para o endpoint tradicional
+ * (POST /chat/), que continua funcionando como antes.
+ * @param {string} userText
+ * @param {string|null} mode
+ * @param {string|null} projectId
+ * @param {HTMLElement} [userMsgEl] - elemento .msg otimista já renderizado,
+ *        recebe o id real assim que a mensagem é persistida (habilita edição).
+ */
+async function sendMessageToBackend(userText, mode, projectId, userMsgEl) {
   try {
     // 1. Garantir que existe um chat atual (criar se necessário)
     let chatId = window.HermesState.currentChatId;
@@ -432,70 +603,144 @@ async function sendMessageToBackend(userText, mode, projectId) {
       if (window.HermesChats) window.HermesChats.renderSidebar();
     }
 
-    // 2. Salvar a mensagem do usuário no backend
+    // 2. IDs dos arquivos anexados nesta mensagem (upload/drag-and-drop)
+    const attachmentIds = attachedFiles.map((f) => f.server_id).filter(Boolean);
+
+    // 3. Salvar a mensagem do usuário no backend
     const msgRes = await fetch(`${window.HermesState.API_BASE}/chats/${chatId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'user', content: userText }),
     });
     if (!msgRes.ok) throw new Error('Falha ao salvar mensagem do usuário');
+    const savedMsg = await msgRes.json();
+    // Marca a bolha otimista com o id real, habilitando o botão de editar.
+    if (userMsgEl) userMsgEl.dataset.messageId = savedMsg.id;
 
-    // 3. Chamar o endpoint de chat (que executa o agente)
-    const chatPayload = {
-      message: userText,
-      mode: mode || null,
-      domain: domain || null,           // <-- NOVO CAMPO
-      project_id: projectId || null,
-      chat_id: chatId,
-      // Pensamento visível: ativado apenas no modo analista
-      show_thinking: mode === 'analyst',
-      web_search: !!window.HermesState.webSearchEnabled,
-    };
-
-    let hermesReply = null;
-
-    // 3a. Tenta streaming primeiro
-    if (supportsStreaming) {
-      hermesReply = await runStreamingChat(chatPayload);
-    }
-
-    // 3b. Fallback: endpoint tradicional (sem streaming), se o stream não
-    // produziu nenhum token (navegador sem suporte, erro de conexão, etc.)
-    if (hermesReply === null) {
-      const chatRes = await fetch(`${window.HermesState.API_BASE}/chat/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(chatPayload),
-      });
-      if (!chatRes.ok) {
-        const errData = await chatRes.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Erro ao processar mensagem');
-      }
-      const data = await chatRes.json();
-      hermesReply = data.reply;
-      removeTypingIndicator();
-      addMessage('hermes', hermesReply);
-    }
-
-    // 4. Remover indicador de digitação (caso ainda esteja visível)
-    removeTypingIndicator();
-
-    // 5. Notificar (se o usuário tiver ativado notificações push)
-    if (window.HermesNotifications) {
-      window.HermesNotifications.notify('Hermes', 'Sua resposta está pronta.');
-    }
-
-    // 6. A resposta do Hermes já foi salva pelo backend (tanto na rota
-    // tradicional quanto na rota de streaming), não precisamos salvar de novo.
+    // 4. Chamar o agente e renderizar a resposta
+    await runChatTurnAndRenderReply(chatId, userText, mode, projectId, attachmentIds);
 
   } catch (error) {
     console.error('[Hermes] Erro no envio:', error);
     removeTypingIndicator();
-    // Exibe erro como mensagem do Hermes (sem alert)
     addMessage('hermes', `❌ Ocorreu um erro: ${error.message || 'Falha na comunicação'}. Tente novamente.`);
   } finally {
     if (window.HermesSphere) window.HermesSphere.setGenerating(false);
   }
+}
+
+/**
+ * Reenvia uma mensagem já editada (o conteúdo já foi atualizado via PATCH
+ * e as mensagens seguintes já foram removidas/ramificadas no backend).
+ * Não persiste uma nova mensagem de usuário — só roda o agente de novo.
+ * Anexos não são reaplicados na edição (limitação atual: a mensagem
+ * editada não reaproveita os attachment_ids da mensagem original).
+ */
+async function resendEditedMessage(chatId, userText, mode, projectId) {
+  await runChatTurnAndRenderReply(chatId, userText, mode, projectId, []);
+}
+
+/**
+ * Transforma a bolha de uma mensagem do usuário em um campo editável.
+ * Ao salvar: faz PATCH /chats/{chatId}/messages/{messageId}, remove da tela
+ * (ramifica) tudo que veio depois dessa mensagem, e reenvia para o agente
+ * gerar uma nova resposta a partir do texto editado.
+ */
+function startEditingMessage(msgEl, bubbleEl) {
+  const chatId = window.HermesState.currentChatId;
+  const messageId = msgEl.dataset.messageId;
+  if (!chatId || !messageId) {
+    showToast('Aguarde a mensagem terminar de enviar antes de editar.');
+    return;
+  }
+  if (msgEl.classList.contains('editing')) return; // já está em edição
+  msgEl.classList.add('editing');
+
+  const originalText = bubbleEl.textContent;
+  bubbleEl.innerHTML = '';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'edit-msg-textarea';
+  textarea.value = originalText;
+  bubbleEl.appendChild(textarea);
+
+  const actions = document.createElement('div');
+  actions.className = 'edit-msg-actions';
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'edit-msg-save-btn';
+  saveBtn.textContent = 'Salvar e reenviar';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'edit-msg-cancel-btn';
+  cancelBtn.textContent = 'Cancelar';
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  bubbleEl.appendChild(actions);
+
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+  function finishEditing(finalText) {
+    msgEl.classList.remove('editing');
+    bubbleEl.innerHTML = '';
+    bubbleEl.textContent = finalText;
+  }
+
+  cancelBtn.addEventListener('click', () => finishEditing(originalText));
+
+  saveBtn.addEventListener('click', async () => {
+    const newText = textarea.value.trim();
+    if (!newText) return;
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    try {
+      const res = await fetch(`${window.HermesState.API_BASE}/chats/${chatId}/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newText }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Falha ao editar mensagem');
+      }
+
+      // Ramificação: remove da tela tudo que veio depois desta mensagem
+      // (o backend já apagou essas mensagens do banco).
+      let sibling = msgEl.nextElementSibling;
+      while (sibling) {
+        const toRemove = sibling;
+        sibling = sibling.nextElementSibling;
+        toRemove.remove();
+      }
+      if (planCard) {
+        planCard.remove();
+        planCard = null;
+      }
+      removeTypingIndicator();
+
+      finishEditing(newText);
+
+      // Determina o modo ativo atual (mesma lógica do sendMessage) e reenvia
+      let mode = null;
+      const codeChip = document.getElementById('mode-code');
+      const engineerChip = document.getElementById('mode-engineer');
+      const analystChip = document.getElementById('mode-analyst');
+      if (codeChip.classList.contains('active')) mode = 'code';
+      else if (engineerChip.classList.contains('active')) mode = 'engineer';
+      else if (analystChip.classList.contains('active')) mode = 'analyst';
+      const projectId = window.HermesState.activeProjectId || null;
+
+      await resendEditedMessage(chatId, newText, mode, projectId);
+    } catch (err) {
+      console.error('[Hermes] Erro ao editar mensagem:', err);
+      showToast('Não foi possível editar a mensagem.');
+      finishEditing(originalText);
+    } finally {
+      saveBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+  });
 }
 
 function sendMessage() {
@@ -514,12 +759,12 @@ function sendMessage() {
   const projectId = window.HermesState.activeProjectId || null;
 
   // Adiciona a mensagem do usuário imediatamente (otimista)
-  addMessage('user', text);
+  const userMsgEl = addMessage('user', text);
   msgInput.value = '';
   msgInput.style.height = 'auto';
 
   // Envia para o backend
-  sendMessageToBackend(text, mode, projectId);
+  sendMessageToBackend(text, mode, projectId, userMsgEl);
 }
 
 // Event listeners
@@ -588,33 +833,45 @@ attachBtn.addEventListener('click', () => {
   fileInput.click();
 });
 
-fileInput.addEventListener('change', async () => {
-  const files = Array.from(fileInput.files);
+/** Garante que existe um chat atual, criando um novo se necessário. */
+async function ensureCurrentChatId() {
+  let chatId = window.HermesState.currentChatId;
+  if (chatId) return chatId;
+
+  const projectId = window.HermesState.activeProjectId || null;
+  const title = projectId ? 'Nova conversa (projeto)' : 'Nova conversa';
+  const res = await fetch(`${window.HermesState.API_BASE}/chats/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, project_id: projectId }),
+  });
+  if (!res.ok) throw new Error('Falha ao criar chat');
+  const chat = await res.json();
+  chatId = chat.id;
+  window.HermesState.currentChatId = chatId;
+  if (window.HermesChats) window.HermesChats.renderSidebar();
+  return chatId;
+}
+
+/**
+ * Faz upload de uma lista de arquivos (FileList ou array) para o chat atual
+ * e adiciona cada um à lista de anexos pendentes (preview + attachment_ids
+ * enviados na próxima mensagem). Usada tanto pelo input de clique quanto
+ * pelo drag-and-drop.
+ */
+async function uploadFilesToChat(fileList) {
+  const files = Array.from(fileList || []);
   if (files.length === 0) return;
 
-  // Garantir que existe um chat (criar se necessário)
-  let chatId = window.HermesState.currentChatId;
-  if (!chatId) {
-    const projectId = window.HermesState.activeProjectId || null;
-    const title = projectId ? 'Nova conversa (projeto)' : 'Nova conversa';
-    try {
-      const res = await fetch(`${window.HermesState.API_BASE}/chats/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, project_id: projectId }),
-      });
-      if (!res.ok) throw new Error('Falha ao criar chat');
-      const chat = await res.json();
-      chatId = chat.id;
-      window.HermesState.currentChatId = chatId;
-      if (window.HermesChats) window.HermesChats.renderSidebar();
-    } catch (err) {
-      console.error('[Hermes] Erro ao criar chat para upload:', err);
-      return;
-    }
+  let chatId;
+  try {
+    chatId = await ensureCurrentChatId();
+  } catch (err) {
+    console.error('[Hermes] Erro ao criar chat para upload:', err);
+    showToast('Não foi possível iniciar o upload.');
+    return;
   }
 
-  // Upload de cada arquivo
   for (const file of files) {
     try {
       const formData = new FormData();
@@ -626,6 +883,7 @@ fileInput.addEventListener('change', async () => {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error('Erro no upload:', err.detail || 'Falha no upload');
+        showToast(`Falha ao enviar "${file.name}"`);
         continue;
       }
       const data = await res.json();
@@ -639,18 +897,56 @@ fileInput.addEventListener('change', async () => {
       });
     } catch (err) {
       console.error('Erro no upload:', err);
+      showToast(`Falha ao enviar "${file.name}"`);
     }
   }
   renderFilePreviews();
+}
+
+fileInput.addEventListener('change', () => {
+  uploadFilesToChat(fileInput.files);
   fileInput.value = ''; // limpa para permitir re-seleção
 });
+
+// ============ DRAG AND DROP ============
+// Cobre toda a área do chat (mensagens + input). Usa um contador de
+// dragenter/dragleave porque esses eventos disparam também para elementos
+// filhos (senão a classe de overlay pisca ao arrastar sobre uma mensagem).
+const dropZone = document.getElementById('view-chat');
+let dragCounter = 0;
+
+if (dropZone) {
+  dropZone.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    if (!e.dataTransfer || !e.dataTransfer.types || !e.dataTransfer.types.includes('Files')) return;
+    dragCounter++;
+    dropZone.classList.add('hermes-drag-over');
+  });
+  dropZone.addEventListener('dragover', (e) => {
+    // preventDefault é obrigatório aqui, senão o navegador nunca dispara "drop"
+    e.preventDefault();
+  });
+  dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter = Math.max(0, dragCounter - 1);
+    if (dragCounter === 0) dropZone.classList.remove('hermes-drag-over');
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropZone.classList.remove('hermes-drag-over');
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+      uploadFilesToChat(e.dataTransfer.files);
+    }
+  });
+}
 
 // Limpar preview ao enviar mensagem (após envio bem-sucedido)
 // Sobrescrevemos sendMessageToBackend para limpar preview no sucesso
 const originalSendToBackend = sendMessageToBackend;
-sendMessageToBackend = async function(userText, mode, projectId) {
+sendMessageToBackend = async function(userText, mode, projectId, userMsgEl) {
   try {
-    await originalSendToBackend(userText, mode, projectId);
+    await originalSendToBackend(userText, mode, projectId, userMsgEl);
     // Se chegou aqui, sucesso: limpar preview
     attachedFiles = [];
     renderFilePreviews();
@@ -728,6 +1024,92 @@ const micBtn = document.querySelector('.input-icon-btn[title="Microfone"]');
 micBtn.addEventListener('click', () => {
   showToast('Ditado por voz ainda não disponível', micBtn);
 });
+
+// Estilos para edição inline de mensagens e overlay de drag-and-drop
+let hermesChatExtraStylesInjected = false;
+function ensureChatExtraStyles() {
+  if (hermesChatExtraStylesInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    .msg.user .msg-edit-btn {
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      background: none;
+      border: none;
+      color: var(--text-low);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 4px;
+      align-self: flex-end;
+    }
+    .msg.user:hover .msg-edit-btn,
+    .msg.user.editing .msg-edit-btn {
+      opacity: 1;
+    }
+    .msg.user .msg-edit-btn:hover {
+      color: var(--text-hi);
+    }
+    .edit-msg-textarea {
+      width: 100%;
+      min-height: 60px;
+      resize: vertical;
+      background: var(--bg-panel);
+      color: var(--text-hi);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-family: var(--font-body);
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .edit-msg-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+      justify-content: flex-end;
+    }
+    .edit-msg-save-btn, .edit-msg-cancel-btn {
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      cursor: pointer;
+      background: none;
+    }
+    .edit-msg-save-btn {
+      background: var(--purple, #7c5cff);
+      color: #fff;
+      border-color: transparent;
+    }
+    .edit-msg-cancel-btn {
+      color: var(--text-low);
+    }
+    #view-chat.hermes-drag-over {
+      position: relative;
+      outline: 2px dashed var(--purple, #7c5cff);
+      outline-offset: -8px;
+      background: rgba(124, 92, 255, 0.05);
+    }
+    #view-chat.hermes-drag-over::after {
+      content: 'Solte os arquivos para anexar à conversa';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--bg-elevated);
+      color: var(--text-hi);
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      font-size: 13px;
+      pointer-events: none;
+      z-index: 20;
+    }
+  `;
+  document.head.appendChild(style);
+  hermesChatExtraStylesInjected = true;
+}
+ensureChatExtraStyles();
 
 // Expor sendMessage globalmente para uso em outros módulos (ex: projetos)
 window.sendMessage = sendMessage;
