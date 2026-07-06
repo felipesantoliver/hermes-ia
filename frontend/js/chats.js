@@ -166,13 +166,37 @@
 
   async function openMoveToProjectSubmenu(parentMenu, chat) {
     parentMenu.querySelectorAll('.ctx-submenu').forEach((s) => s.remove());
+
+    const submenu = document.createElement('div');
+    submenu.className = 'ctx-submenu';
+
+    // Opção fixa no topo: criar um projeto novo e já mover o chat pra ele.
+    const createBtn = document.createElement('button');
+    createBtn.className = 'ctx-menu-item';
+    createBtn.textContent = '+ Criar novo projeto';
+    createBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeOpenMenu();
+      if (!window.HermesProjects || !window.HermesProjects.openNewProjectModal) {
+        console.error('[Hermes] HermesProjects.openNewProjectModal indisponível');
+        return;
+      }
+      window.HermesProjects.openNewProjectModal({
+        onCreated: async (project) => {
+          await patchChat(chat.id, { project_id: project.id });
+        },
+      });
+    });
+    submenu.appendChild(createBtn);
+
     try {
       const res = await fetch(`${API()}/projects/`);
       const projects = await res.json();
-      const submenu = document.createElement('div');
-      submenu.className = 'ctx-submenu';
       if (projects.length === 0) {
-        submenu.innerHTML = `<div class="ctx-menu-empty">Nenhum projeto ainda</div>`;
+        const empty = document.createElement('div');
+        empty.className = 'ctx-menu-empty';
+        empty.textContent = 'Nenhum projeto existente ainda';
+        submenu.appendChild(empty);
       }
       projects.forEach((p) => {
         const pbtn = document.createElement('button');
@@ -188,6 +212,7 @@
       parentMenu.appendChild(submenu);
     } catch (err) {
       console.error('[Hermes] Erro ao buscar projetos para mover chat:', err);
+      parentMenu.appendChild(submenu); // ainda mostra a opção de criar, mesmo se a listagem falhar
     }
   }
 
