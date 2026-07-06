@@ -193,9 +193,18 @@
 
   function positionMenu(menu, anchorEl) {
     const rect = anchorEl.getBoundingClientRect();
+    const menuHeight = menu.offsetHeight || 220; // estimativa antes de medir (menu recém-criado)
+    const spaceBelow = window.innerHeight - rect.bottom;
+
     menu.style.position = 'fixed';
-    menu.style.top = rect.bottom + 4 + 'px';
     menu.style.left = Math.max(8, rect.right - 180) + 'px';
+
+    if (spaceBelow < menuHeight + 8) {
+      // não cabe embaixo: abre para cima do botão
+      menu.style.top = Math.max(8, rect.top - menuHeight - 4) + 'px';
+    } else {
+      menu.style.top = rect.bottom + 4 + 'px';
+    }
   }
 
   function renameChat(chat) {
