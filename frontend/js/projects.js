@@ -15,6 +15,7 @@
     },
     renderProjectsList: renderProjectsList,
     openProject: openProject,
+    openNewProjectModal: openNewProjectModal,
   };
 
   /* ---------- Navegação para a view de projetos ---------- */
@@ -88,15 +89,37 @@
   const nameInput = document.getElementById('new-project-name-modal');
   const descInput = document.getElementById('new-project-desc-modal');
 
+  // Callback opcional chamado com o projeto recém-criado. Usado quando o
+  // modal é aberto a partir de outro fluxo (ex: "Mover para projeto" no
+  // menu de contexto de um chat), para poder agir sobre o projeto novo
+  // assim que ele é confirmado (ex: mover o chat pra ele).
+  let onProjectCreated = null;
+
+  /**
+   * Abre o modal de criação de projeto. Se `onCreated` for passado, é
+   * chamado com o projeto criado assim que a criação for confirmada
+   * (além do fluxo padrão de abrir a tela de detalhe do projeto).
+   */
+  function openNewProjectModal({ onCreated } = {}) {
+    onProjectCreated = onCreated || null;
+    modal.style.display = 'flex';
+  }
+
   function closeModal() {
     modal.style.display = 'none';
     nameInput.value = '';
     descInput.value = '';
   }
 
-  cancelModal.addEventListener('click', closeModal);
+  cancelModal.addEventListener('click', () => {
+    onProjectCreated = null;
+    closeModal();
+  });
   modal.addEventListener('click', (e) => {
-    if (e.target === modal) closeModal();
+    if (e.target === modal) {
+      onProjectCreated = null;
+      closeModal();
+    }
   });
 
   confirmModal.addEventListener('click', async () => {
@@ -111,8 +134,16 @@
       });
       if (!res.ok) throw new Error('Falha ao criar projeto');
       const project = await res.json();
+      const callback = onProjectCreated;
+      onProjectCreated = null;
       closeModal();
-      openProject(project.id);
+      if (callback) {
+        // Fluxo alternativo (ex: mover chat pra este projeto): não navega
+        // automaticamente para a tela de detalhe do projeto.
+        await callback(project);
+      } else {
+        openProject(project.id);
+      }
     } catch (err) {
       console.error('[Hermes] Erro ao criar projeto:', err);
     }
