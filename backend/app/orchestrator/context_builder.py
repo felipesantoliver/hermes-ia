@@ -11,13 +11,19 @@
 #   5. file_rag              (trechos de documentos da galeria)  <-- NOVO
 
 from typing import Optional, List
+from pathlib import Path
 from ..config import settings
 from ..memory import store
 from ..memory.code_rag import retrieve  # import existente
-from ..memory.file_rag import search_documents   # <-- NOVO
+from ..memory.file_rag import search_documents, extract_text   # <-- NOVO: extract_text
+from .. import files as files_module   # <-- NOVO: resolve attachment por ID (loose OU projeto)
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Limites para não estourar o orçamento de contexto com anexos grandes.
+ATTACHMENT_MAX_CHARS_PER_FILE = 6000
+ATTACHMENT_MAX_TOTAL_CHARS = 16000
 
 # Fração do MAX_CONTEXT_TOKENS reservada para memória injetada.
 # O restante fica para system prompt base, histórico de mensagens e resposta.
@@ -216,3 +222,61 @@ def build_memory_context(
         return ""
 
     return "\n".join(included)
+
+
+def build_attachments_block(attachment_ids: Optional[List[str]]) -> str:
+    """
+    Resolve uma lista de attachment_ids (vindos do drag-and-drop/upload do
+    frontend) em texto pronto para ser anexado à mensagem do usuário.
+
+    Busca cada arquivo tanto em `loose_files` quanto em `project_files`
+    (ver files.get_file_record) — antes, buscas desse tipo olhavam só
+    `loose_files` e "perdiam" qualquer arquivo anexado a partir de um
+    projeto. Extensões sem extração de texto suportada (imagens, docx,
+    binários em geral) entram no bloco apenas com o nome do arquivo, para
+    o modelo saber que o anexo existe mesmo sem poder ler o conteúdo.
+    """
+    if not attachment_ids:
+        return ""
+
+    lines: List[str] = ["Arquivos anexados a esta mensagem pelo usuário:"]
+    total_chars = 0
+
+    for file_id in attachment_ids:
+        record = files_module.get_file_record(file_id)
+        if record is None:
+            logger.warning(f"attachment_id {file_id} não encontrado (nem em loose_files, nem em project_files)")
+            continue
+
+        filename = record["filename"]
+        path = Path(record["stored_path"])
+
+        if not path.exists():
+            lines.append(f"\n- {filename}: (arquivo não encontrado em disco)")
+            continue
+
+        text = ""
+        try:
+            text = extract_text(path)
+        except Exception as e:
+            logger.warning(f"Falha ao extrair texto do anexo {filename} ({file_id}): {e}")
+
+        if not text:
+            lines.append(f"\n- {filename}: (anexo binário ou formato sem extração automática de texto; "
+                          f"apenas o nome do arquivo está disponível no contexto)")
+            continue
+
+        remaining_budget = ATTACHMENT_MAX_TOTAL_CHARS - total_chars
+        if remaining_budget <= 0:
+            lines.append(f"\n- {filename}: (conteúdo omitido — orçamento de contexto para anexos esgotado)")
+            continue
+
+        snippet = text[:min(ATTACHMENT_MAX_CHARS_PER_FILE, remaining_budget)]
+        truncated = len(text) > len(snippet)
+        lines.append(f"\n- {filename}:\n```\n{snippet}{' [...]' if truncated else ''}\n```")
+        total_chars += len(snippet)
+
+    if len(lines) <= 1:
+        return ""
+
+    return "\n".join(lines)

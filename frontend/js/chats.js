@@ -53,7 +53,7 @@
             <p>Escreva uma mensagem para acordar o núcleo. Hermes escuta, pensa e responde com clareza.</p>
           </div>`;
       } else {
-        messages.forEach((m) => addMessage(m.role, m.content));
+        messages.forEach((m) => addMessage(m.role, m.content, m.id));
       }
     } catch (err) {
       console.error('[Hermes] Erro ao carregar mensagens:', err);

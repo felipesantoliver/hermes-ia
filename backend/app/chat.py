@@ -6,12 +6,13 @@ import json
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Optional, AsyncIterator
+from typing import Optional, List, AsyncIterator
 
 from .db import db_cursor, now_iso, new_id
 from .orchestrator.loop import AgentLoop
 from .orchestrator.router import select_agent
 from .orchestrator.analyst import should_use_analyst_mode
+from .orchestrator.context_builder import build_attachments_block
 from .llm import LLMClient, get_llm_client
 from .profile_prompt import build_profile_system_section
 
@@ -26,6 +27,7 @@ class ChatRequest(BaseModel):
     chat_id: str                        # obrigatório, pois já criamos antes
     show_thinking: bool = False         # ativa o streaming do raciocínio interno ("thinking")
     web_search: bool = False            # ativa a ferramenta de busca web
+    attachment_ids: Optional[List[str]] = None  # arquivos anexados a esta mensagem (upload/drag-and-drop)
 
 
 class ChatResponse(BaseModel):
@@ -113,8 +115,20 @@ async def _build_chat_context(payload: ChatRequest) -> dict:
     messages = [{"role": "system", "content": system_prompt}]
     for h in history:
         messages.append({"role": h["role"], "content": h["content"]})
+
+    # Monta o texto da mensagem atual do usuário, anexando o conteúdo dos
+    # arquivos enviados por upload/drag-and-drop (se houver). Isso só afeta
+    # o que é enviado ao LLM nesta chamada — o texto salvo no banco (via
+    # POST /chats/{id}/messages, feito separadamente pelo frontend) continua
+    # sendo só o texto digitado pelo usuário, sem o conteúdo dos anexos.
+    user_content = payload.message
+    if payload.attachment_ids:
+        attachments_block = build_attachments_block(payload.attachment_ids)
+        if attachments_block:
+            user_content = f"{payload.message}\n\n{attachments_block}"
+
     # Adicionar a mensagem atual do usuário (já foi salva, mas vamos adicionar para garantir)
-    messages.append({"role": "user", "content": payload.message})
+    messages.append({"role": "user", "content": user_content})
 
     # 8. Selecionar o agente adequado (classificador híbrido: embeddings + heurística + domínio)
     agent_type = select_agent(payload.mode, payload.message, domain=payload.domain)

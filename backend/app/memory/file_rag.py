@@ -95,6 +95,21 @@ def _get_index_dir(project_id: Optional[str] = None) -> Path:
     return base
 
 
+def extract_text(file_path: Path) -> str:
+    """Dispatcher público de extração de texto por extensão. Reutiliza as
+    mesmas rotinas usadas na indexação RAG (`index_document`), para que a
+    inclusão direta de um anexo no contexto do chat use exatamente a mesma
+    extração (sem duplicar lógica de parsing de PDF/texto).
+    Retorna string vazia se a extensão não for suportada ou a extração falhar.
+    """
+    ext = file_path.suffix.lower()
+    if ext == ".pdf":
+        return _extract_text_from_pdf(file_path)
+    if ext in (".md", ".markdown", ".txt"):
+        return _extract_text_from_markdown_txt(file_path)
+    return ""
+
+
 def index_document(file_id: str, file_path: Path, project_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Indexa um único documento (extrai texto, gera chunks, embeddings, e adiciona ao índice FAISS).
@@ -104,11 +119,8 @@ def index_document(file_id: str, file_path: Path, project_id: Optional[str] = No
     if ext not in SUPPORTED_EXTS:
         return {"status": "skipped", "reason": f"Extensão {ext} não suportada"}
 
-    # Extrair texto
-    if ext == ".pdf":
-        text = _extract_text_from_pdf(file_path)
-    else:
-        text = _extract_text_from_markdown_txt(file_path)
+    # Extrair texto (mesma rotina usada por extract_text(), para não divergir)
+    text = extract_text(file_path)
 
     if not text:
         return {"status": "error", "reason": "Nenhum texto extraído"}

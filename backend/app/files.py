@@ -46,6 +46,48 @@ def _row_to_loose(row) -> dict:
     }
 
 
+def get_file_record(file_id: str) -> Optional[dict]:
+    """Busca um arquivo por ID em QUALQUER origem (loose_files OU project_files)
+    e devolve um dict com um formato unificado.
+
+    Antes, várias partes do backend só olhavam `loose_files`, então um
+    attachment_id de um arquivo de projeto (project_files) era tratado como
+    "não encontrado" mesmo existindo. Esta função é o ponto único de busca
+    por ID e deve ser usada sempre que precisarmos resolver um attachment,
+    independente de onde ele foi originado.
+    """
+    with db_cursor() as cur:
+        cur.execute("SELECT * FROM loose_files WHERE id = ?", (file_id,))
+        row = cur.fetchone()
+        if row is not None:
+            return {
+                "id": row["id"],
+                "filename": row["filename"],
+                "file_type": row["file_type"],
+                "stored_path": row["stored_path"],
+                "size_bytes": row["size_bytes"],
+                "source": "loose",
+                "chat_id": row["chat_id"],
+                "project_id": None,
+            }
+
+        cur.execute("SELECT * FROM project_files WHERE id = ?", (file_id,))
+        row = cur.fetchone()
+        if row is not None:
+            return {
+                "id": row["id"],
+                "filename": row["filename"],
+                "file_type": row["file_type"],
+                "stored_path": row["stored_path"],
+                "size_bytes": row["size_bytes"],
+                "source": "project",
+                "chat_id": None,
+                "project_id": row["project_id"],
+            }
+
+    return None
+
+
 @router.post("/upload", response_model=LooseFileOut, status_code=201)
 async def upload_loose_file(chat_id: Optional[str] = None, file: UploadFile = File(...)):
     with db_cursor() as cur:
