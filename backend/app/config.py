@@ -26,7 +26,7 @@ def _resolve(relative_path: str) -> str:
 
 class Settings:
     APP_NAME: str = "Hermes AI"
-    VERSION: str = "0.2.0"  # V2
+    VERSION: str = "0.2.1"  # V2.4.1 — correções de chat, thinking, personalidade e busca web
 
     # Caminho local do modelo LLM (ajustar conforme sua instalação)
     MODEL_PATH: str = _resolve("./models/hermes-core.gguf")

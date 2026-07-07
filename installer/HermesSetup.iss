@@ -1,5 +1,5 @@
 #define MyAppName "Hermes AI"
-#define MyAppVersion "2.3.0"
+#define MyAppVersion "2.4.1"
 #define MyAppExeName "Hermes-ia.exe"
 #define MyAppPublisher "Hermes AI Project"
 #define MyAppURL "https://github.com/felipesantoliver/hermes-ai"
@@ -64,10 +64,21 @@ var
   DownloadCheckBox: TNewCheckBox;
   SkipInfoLabel: TNewStaticText;
   DownloadPage: TOutputProgressWizardPage;
+  CancelDownloadButton: TNewButton;
 
   SelectedModelUrl: String;
   SelectedModelSizeMB: Int64;
   LogFilePath: String;
+
+  { Sinalização de cancelamento do download em andamento (grupo 10: antes
+    disso, uma vez que a etapa de pós-instalação começava, não havia
+    NENHUMA forma de interromper o download — o botão Cancelar padrão do
+    Inno Setup já vem desabilitado nessa fase, e o loop de espera rodava
+    até terminar ou estourar o tempo máximo. Este botão próprio, mais o
+    arquivo de sinalização lido pelos scripts .ps1, resolvem isso. }
+  DownloadWasCancelled: Boolean;
+  CurrentDownloadPidFile: String;
+  CurrentCancelFile: String;
 
 const
   WV2ClientGuid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
@@ -353,9 +364,68 @@ begin
   end;
 end;
 
+{ Mata (se ainda existir) o processo PowerShell responsável pelo download
+  atual, usando o PID que o próprio script .ps1 grava em CurrentDownloadPidFile
+  assim que começa a rodar. /T mata também processos filhos; /F força o
+  encerramento imediato. }
+procedure KillCurrentDownloadProcess;
+var
+  PidStr: String;
+  ResultCode: Integer;
+begin
+  if (CurrentDownloadPidFile = '') or not FileExists(CurrentDownloadPidFile) then
+    Exit;
+  if LoadStringFromFile(CurrentDownloadPidFile, PidStr) then
+  begin
+    PidStr := Trim(PidStr);
+    if PidStr <> '' then
+      Exec(ExpandConstant('{sys}\taskkill.exe'), '/PID ' + PidStr + ' /T /F', '',
+        SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
+{ Handler do botão "Cancelar download": sinaliza o cancelamento (arquivo lido
+  pelo DownloadFile.ps1 dentro do loop do BITS, o que permite remover o job
+  de forma limpa), mata o processo PowerShell em execução, e marca a flag
+  global para que o loop de espera no lado do Inno Setup também saia
+  imediatamente, sem esperar o timeout de 4 horas. }
+procedure CancelDownloadButtonClick(Sender: TObject);
+var
+  ResultCode: Integer;
+begin
+  if MsgBox('Tem certeza que deseja cancelar o download?' + #13#10 +
+     'O Hermes AI será instalado, mas você precisará baixar o modelo e/ou ' +
+     'o motor de IA manualmente depois.', mbConfirmation, MB_YESNO) = IDYES then
+  begin
+    DownloadWasCancelled := True;
+    if CurrentCancelFile <> '' then
+      SaveStringToFile(CurrentCancelFile, '1', False);
+
+    { O download do modelo usa BITS (Background Intelligent Transfer Service),
+      um job gerenciado pelo próprio Windows, INDEPENDENTE do processo
+      PowerShell que o criou. Só sinalizar o CancelFile e matar o processo
+      não é suficiente: se o taskkill (abaixo, via KillCurrentDownloadProcess)
+      acontecer antes do script .ps1 notar o sinal (ele só verifica 1x por
+      segundo), o job do BITS continuaria baixando em segundo plano mesmo
+      com o instalador achando que cancelou. Por isso removemos o job aqui
+      diretamente e de forma síncrona, com garantia, em vez de depender só
+      do script filho perceber a tempo. Não tem efeito nenhum se não houver
+      job com esse nome (ex.: já era o download do llama-server, que não
+      usa BITS). }
+    Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -Command "Get-BitsTransfer -Name ''HermesAI-ModelDownload'' ' +
+      '-ErrorAction SilentlyContinue | Remove-BitsTransfer -ErrorAction SilentlyContinue"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+    KillCurrentDownloadProcess;
+    CancelDownloadButton.Enabled := False;
+    DownloadPage.SetText('Cancelando o download...', 'Aguarde, finalizando com segurança.');
+  end;
+end;
+
 procedure DownloadModelWithProgress;
 var
-  ScriptPath, StatusPath, DestPath, Cmd: String;
+  ScriptPath, StatusPath, DestPath, Cmd, PidFilePath, CancelFilePath: String;
   StatusJson: AnsiString;
   DecodedJson, State, Msg: String;
   Percent: Integer;
@@ -367,14 +437,22 @@ begin
   StatusPath := ExpandConstant('{tmp}\hermes_download_status.json');
   LogFilePath := ExpandConstant('{app}\data\logs\installer_download.log');
   DestPath := ExpandConstant('{app}\models\hermes-core.gguf');
+  PidFilePath := ExpandConstant('{tmp}\hermes_download.pid');
+  CancelFilePath := ExpandConstant('{tmp}\hermes_download.cancel');
 
   ForceDirectories(ExpandConstant('{app}\models'));
   ForceDirectories(ExpandConstant('{app}\data\logs'));
   DeleteFile(StatusPath);
+  DeleteFile(PidFilePath);
+  DeleteFile(CancelFilePath);
+
+  DownloadWasCancelled := False;
+  CurrentDownloadPidFile := PidFilePath;
+  CurrentCancelFile := CancelFilePath;
 
   Cmd := Format(
-    '-NoProfile -ExecutionPolicy Bypass -File "%s" -Url "%s" -Destination "%s" -StatusFile "%s" -LogFile "%s"', [
-    ScriptPath, SelectedModelUrl, DestPath, StatusPath, LogFilePath]);
+    '-NoProfile -ExecutionPolicy Bypass -File "%s" -Url "%s" -Destination "%s" -StatusFile "%s" -LogFile "%s" -PidFile "%s" -CancelFile "%s"', [
+    ScriptPath, SelectedModelUrl, DestPath, StatusPath, LogFilePath, PidFilePath, CancelFilePath]);
 
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Cmd, '',
               SW_HIDE, ewNoWait, ResultCode) then
@@ -386,6 +464,8 @@ begin
   DownloadPage.SetText('Iniciando download...', '');
   DownloadPage.SetProgress(0, 100);
   DownloadPage.Show;
+  CancelDownloadButton.Visible := True;
+  CancelDownloadButton.Enabled := True;
   try
     State := '';
     Elapsed := 0;
@@ -403,9 +483,15 @@ begin
         DownloadPage.SetProgress(Percent, 100);
         DownloadPage.SetText('Baixando o modelo de IA... (' + IntToStr(Percent) + '%)', Msg);
       end;
-    until (State = 'done') or (State = 'error') or (Elapsed >= MaxDownloadWaitSeconds);
+    { Além dos estados 'done'/'error', agora também saímos do loop se o
+      usuário clicou em "Cancelar download" (DownloadWasCancelled) ou se o
+      próprio script sinalizou o estado 'cancelled'. }
+    until (State = 'done') or (State = 'error') or (State = 'cancelled') or
+          DownloadWasCancelled or (Elapsed >= MaxDownloadWaitSeconds);
 
-    if State = 'error' then
+    if DownloadWasCancelled or (State = 'cancelled') then
+      DownloadPage.SetText('Download cancelado.', 'Você pode baixar o modelo manualmente depois.')
+    else if State = 'error' then
       MsgBox(
         'Ocorreu um erro no download do modelo de IA.' + #13#10 +
         'Detalhes: ' + Msg + #13#10#13#10 +
@@ -421,28 +507,41 @@ begin
     else
       DownloadPage.SetText('Download concluído!', '');
   finally
+    CancelDownloadButton.Visible := False;
     DownloadPage.Hide;
   end;
 end;
 
 procedure DownloadLlamaServerWithProgress;
 var
-  ScriptPath, StatusPath, Cmd, Variant: String;
+  ScriptPath, StatusPath, Cmd, Variant, PidFilePath: String;
   StatusJson: AnsiString;
   DecodedJson, State, Msg: String;
   Percent: Integer;
   ResultCode: Integer;
   Elapsed: Integer;
 begin
+  { Se o usuário já cancelou o download do modelo, não faz sentido seguir
+    automaticamente para o download do llama-server. }
+  if DownloadWasCancelled then
+    Exit;
+
   ExtractTemporaryFile('DownloadLlamaServer.ps1');
   ScriptPath := ExpandConstant('{tmp}\DownloadLlamaServer.ps1');
   StatusPath := ExpandConstant('{tmp}\hermes_llama_status.json');
   Variant := GetLlamaVariant(GetSelectedGpuIndex());
+  PidFilePath := ExpandConstant('{tmp}\hermes_llama_download.pid');
   DeleteFile(StatusPath);
+  DeleteFile(PidFilePath);
+
+  DownloadWasCancelled := False;
+  CurrentDownloadPidFile := PidFilePath;
+  CurrentCancelFile := ''; { este script baixa de forma síncrona; matar o
+                             processo via PID é suficiente para cancelar }
 
   Cmd := Format(
-    '-NoProfile -ExecutionPolicy Bypass -File "%s" -Variant "%s" -DestDir "%s" -StatusFile "%s" -LogFile "%s"', [
-    ScriptPath, Variant, ExpandConstant('{app}'), StatusPath, LogFilePath]);
+    '-NoProfile -ExecutionPolicy Bypass -File "%s" -Variant "%s" -DestDir "%s" -StatusFile "%s" -LogFile "%s" -PidFile "%s"', [
+    ScriptPath, Variant, ExpandConstant('{app}'), StatusPath, LogFilePath, PidFilePath]);
 
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Cmd, '',
               SW_HIDE, ewNoWait, ResultCode) then
@@ -454,6 +553,8 @@ begin
   DownloadPage.SetText('Baixando o motor de IA (llama-server)...', '');
   DownloadPage.SetProgress(0, 100);
   DownloadPage.Show;
+  CancelDownloadButton.Visible := True;
+  CancelDownloadButton.Enabled := True;
   try
     State := '';
     Elapsed := 0;
@@ -474,9 +575,12 @@ begin
         DownloadPage.SetProgress(Percent, 100);
         DownloadPage.SetText('Baixando o motor de IA... (' + IntToStr(Percent) + '%)', Msg);
       end;
-    until (State = 'done') or (State = 'error') or (Elapsed >= MaxDownloadWaitSeconds);
+    until (State = 'done') or (State = 'error') or DownloadWasCancelled or
+          (Elapsed >= MaxDownloadWaitSeconds);
 
-    if State = 'error' then
+    if DownloadWasCancelled then
+      DownloadPage.SetText('Download cancelado.', 'Você pode instalar o motor de IA manualmente depois.')
+    else if State = 'error' then
       MsgBox(
         'Ocorreu um erro ao baixar o motor de IA (llama-server).' + #13#10 +
         'Detalhes: ' + Msg + #13#10#13#10 +
@@ -494,6 +598,7 @@ begin
     else
       DownloadPage.SetText('Motor de IA instalado!', '');
   finally
+    CancelDownloadButton.Visible := False;
     DownloadPage.Hide;
   end;
 end;
@@ -555,6 +660,24 @@ begin
   DownloadPage := CreateOutputProgressPage(
     'Baixando o modelo de IA',
     'Isso pode levar alguns minutos, dependendo da sua internet.');
+
+  { Botão próprio de cancelamento: a página de progresso (TOutputProgressWizardPage)
+    não expõe um botão de cancelar nativo, e a etapa de pós-instalação
+    (ssPostInstall) já desabilita por padrão o botão Cancelar do rodapé do
+    Inno Setup. Sem este botão, o usuário ficava sem NENHUMA forma de
+    interromper o download. Fica escondido até um download começar. }
+  CancelDownloadButton := TNewButton.Create(WizardForm);
+  CancelDownloadButton.Parent := WizardForm;
+  CancelDownloadButton.Width := 140;
+  CancelDownloadButton.Height := WizardForm.CancelButton.Height;
+  { Ancorado à ESQUERDA do botão Cancelar nativo (não a ClientWidth): assim
+    nunca se sobrepõe a ele nem ao botão Avançar, independentemente do
+    tamanho da janela ou de mudanças futuras no layout padrão do wizard. }
+  CancelDownloadButton.Left := WizardForm.CancelButton.Left - CancelDownloadButton.Width - 10;
+  CancelDownloadButton.Top := WizardForm.CancelButton.Top;
+  CancelDownloadButton.Caption := 'Cancelar download';
+  CancelDownloadButton.OnClick := @CancelDownloadButtonClick;
+  CancelDownloadButton.Visible := False;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -572,9 +695,10 @@ begin
 
   if CurPageID = wpFinished then
   begin
-    if not DownloadCheckBox.Checked then
+    if (not DownloadCheckBox.Checked) or DownloadWasCancelled then
       WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 +
-        'Lembre-se: você optou por não baixar o modelo de IA e o motor de IA agora.' + #13#10 +
+        'Lembre-se: o modelo de IA e/ou o motor de IA não foram baixados agora' + #13#10 +
+        '(não selecionado ou download cancelado).' + #13#10 +
         'Modelo (.gguf) recomendado: ' + SelectedModelUrl + #13#10 +
         'Coloque-o em: ' + ExpandConstant('{app}') + '\models\hermes-core.gguf' + #13#10#13#10 +
         'Motor de IA (llama-server): baixe em github.com/ggml-org/llama.cpp/releases ' +

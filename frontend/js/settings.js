@@ -135,7 +135,11 @@
   const appearanceChips = document.querySelectorAll('#appearance-chips .settings-chip');
 
   function applyAppearance(choice) {
-    if (choice === 'system') {
+    // Delega para o módulo compartilhado (ui.js), que também cuida do
+    // ícone do botão rápido de tema no topo, mantendo os dois em sincronia.
+    if (window.HermesTheme) {
+      window.HermesTheme.apply(choice);
+    } else if (choice === 'system') {
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       document.body.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
     } else {

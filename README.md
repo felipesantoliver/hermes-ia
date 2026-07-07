@@ -3,7 +3,7 @@
 **Assistente pessoal de IA local-first focado em gestão de projetos, engenharia de software e desenvolvimento técnico multi-domínio.**  
 O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assistido por IA**, onde você constrói software, firmware e sistemas com o suporte contínuo de um agente inteligente local.
 
-> **Status:** ✅ MVP concluído | ✅ V1 concluída | ✅ V2 concluído | ✅ V2.4 (instalador gráfico Windows) concluído | ✅ RAG de documentos da galeria (PDF/Markdown/TXT) concluído | ✅ CI/CD do instalador via GitHub Actions concluído.
+> **Status:** ✅ MVP concluído | ✅ V1 concluída | ✅ V2 concluído | ✅ V2.4 (instalador gráfico Windows) concluído | ✅ RAG de documentos da galeria (PDF/Markdown/TXT) concluído | ✅ CI/CD do instalador via GitHub Actions concluído | ✅ V2.4.1 (correções de chat, instalador e comportamento da IA) concluído.
 
 ---
 
@@ -15,6 +15,7 @@ O Hermes não é um chatbot: é um **sistema operacional de desenvolvimento assi
 - [Estrutura do Projeto](#estrutura-do-projeto)
 - [Como Executar](#como-executar)
 - [Funcionalidades](#funcionalidades)
+- [Changelog](#changelog)
 - [Roadmap](#roadmap)
 - [Princípios Fundamentais](#princípios-fundamentais)
 - [Hardware Alvo](#hardware-alvo)
@@ -476,6 +477,39 @@ Hermes-ia/
 | 🧙 Instalador gráfico | `Hermes-ia-Setup.exe` — detecção de GPU, download do modelo com progresso/retomada, atalhos automáticos, tudo em português. |
 | 🤖 CI/CD do instalador | GitHub Actions builda `.exe` + instalador automaticamente a cada tag `v*` e publica como artifact. |
 
+---
+
+## Changelog
+
+### V2.4.1 — Correções de chat, instalador e comportamento da IA
+
+Rodada de correções focada em bugs reportados no dia a dia de uso do app, sem novas telas ou funcionalidades. Backend na `0.2.1`, instalador na `2.4.1`.
+
+**Chat**
+- **Edição de mensagem** — o botão ✎ existia no frontend, mas o backend não tinha a rota para salvar a edição; agora `PATCH /chats/{chat_id}/messages/{message_id}` existe de verdade, atualiza o conteúdo e "ramifica" a conversa (remove tudo que veio depois, já que uma nova resposta será gerada a partir do texto editado).
+- **Copiar mensagens** — botão de copiar em toda mensagem (usuário e Hermes), com fallback para navegadores/contextos sem `navigator.clipboard`.
+- **Copiar blocos de código** — botão "Copiar" em cada bloco de código markdown renderizado, inclusive durante o streaming.
+- **Anexos "presos" no chat** — o preview de arquivo anexado agora é limpo corretamente depois do envio.
+- **Avatar do usuário** — trocado o texto fixo "FS" por iniciais calculadas a partir do nome salvo no perfil.
+- **Quebra de texto ausente** — textos sem espaços (URLs longas, tokens, hashes) não quebravam a linha em certos casos; corrigido com `overflow-wrap`/`word-break` na bolha e `min-width:0` nos containers flex (que bloqueava a quebra mesmo com as propriedades CSS certas). Blocos de código ganharam scroll horizontal em vez de estourar o layout.
+
+**Perfil e Configurações**
+- **Tema não persistia** — o botão rápido de tema (topo da tela) só mudava a aparência local e nunca salvava; agora usa o mesmo módulo compartilhado (`window.HermesTheme`) do seletor em Configurações, então qualquer um dos dois persiste via `PATCH /profile`.
+- **Onboarding do nome** — na primeira abertura do app (perfil sem `display_name`), o modal de perfil agora abre automaticamente com foco no campo de nome.
+- **"Mostrar pensamento" não funcionava fora do Modo Analista** — o payload enviado ao backend ignorava a preferência salva e usava um valor fixo (`show_thinking: mode === 'analyst'`). Agora respeita o toggle salvo em Configurações.
+- **Personalidade/emojis pareciam ignorados** — a preferência de tom (personalidade, acolhimento, entusiasmo, emojis) ficava no início de um system prompt longo, e modelos locais menores tendem a dar mais peso a instruções recentes (perto do final). Agora um resumo compacto da preferência é reforçado no final do prompt, depois de ferramentas/agente/memória.
+
+**Busca Web**
+- **Modo web não trazia informação atualizada** — duas causas raiz, corrigidas:
+  1. A instrução de sistema só sugeria usar a busca ("se precisar"); agora, com o modo web ativado, o uso da ferramenta é instruído como obrigatório para perguntas que envolvam informação que possa estar desatualizada.
+  2. A detecção de chamada de ferramenta exigia que a resposta do modelo fosse **JSON puro**, sem nenhum texto antes/depois — algo que modelos locais menores frequentemente não respeitam (envolvem em ` ```json `, ou escrevem uma frase antes). Agora a extração é tolerante a esses formatos, tanto no modo streaming quanto no não-streaming, mantendo uma checagem que evita falsos positivos em respostas de texto normais.
+- Corrigido também um bug latente que quebrava com `NameError` toda vez que uma ferramenta era chamada pelo endpoint de chat não-streaming.
+
+**Instalador Windows**
+- **Sem forma de cancelar o download** — a etapa de pós-instalação já desabilita por padrão o botão Cancelar nativo do Inno Setup, e o loop de espera não checava nada até terminar ou estourar 4 horas. Adicionado um botão próprio "Cancelar download": mata o processo PowerShell em execução e remove o job do BITS de forma síncrona e garantida (o download do modelo usa BITS, um serviço do Windows independente do processo que o criou — só matar o processo não impedia o download de continuar em segundo plano).
+
+---
+
 ## Roadmap
 
 ✅ **MVP** — Backend FastAPI, SQLite, SPA vanilla, integração com LLM local, Agent Loop básico, memória em 3 camadas, classificador heurístico.
@@ -489,6 +523,8 @@ Hermes-ia/
 ✅ **RAG de Documentos** — quinta camada de memória: indexação FAISS automática de PDFs (via PyMuPDF), Markdown e TXT enviados na Galeria, com recuperação de trechos relevantes no chat e no Modo Analista.
 
 ✅ **CI/CD do Instalador** — pipeline no GitHub Actions que builda o `.exe` e o instalador a cada tag `v*` e publica como artifact, sem precisar de build manual.
+
+✅ **V2.4.1** — Rodada de correções de chat (edição de mensagem, copiar mensagens/código, anexos, quebra de texto, avatar), perfil (tema persistente, onboarding do nome, pensamento visível, personalidade/emojis), busca web (confiabilidade da chamada de ferramenta) e instalador (cancelamento real do download). Ver [Changelog](#changelog) para a lista completa.
 
 🔜 **Próximo** — adicionar `PyMuPDF` ao `backend/requirements.txt` (dependência do RAG de documentos ainda não declarada), interface por voz (STT/TTS), assinatura de código para o `.exe` e para o instalador.
 

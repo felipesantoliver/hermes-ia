@@ -62,6 +62,31 @@
     }
   }
 
+  /* ---------- Onboarding: pedir o nome na primeira abertura do app ---------- */
+  // Antes, nada perguntava o nome do usuário na primeira vez — o modal de
+  // perfil só abria se o usuário clicasse manualmente no botão. Agora,
+  // assim que o app carrega, verificamos se display_name está vazio e, se
+  // estiver, abrimos o modal de perfil automaticamente com foco no campo
+  // de nome, para que o usuário defina isso já na primeira execução.
+  async function runFirstRunOnboardingIfNeeded() {
+    try {
+      const res = await fetch(`${API()}/profile/`);
+      if (!res.ok) throw new Error('Falha ao carregar perfil');
+      const profile = await res.json();
+      if (!profile.display_name || !profile.display_name.trim()) {
+        populateFields(profile);
+        profileLoaded = true;
+        overlay.classList.add('open');
+        // Pequeno delay para garantir que o modal já esteja visível/animado
+        // antes de focar o campo (evita foco "perdido" em alguns navegadores).
+        setTimeout(() => els.name.focus(), 50);
+      }
+    } catch (err) {
+      console.error('[Hermes] Erro ao verificar onboarding inicial:', err);
+    }
+  }
+  runFirstRunOnboardingIfNeeded();
+
   function populateFields(profile) {
     els.name.value = profile.display_name || '';
     els.about.value = profile.about || '';
@@ -136,7 +161,14 @@
   }
 
   /* ---------- Campos de texto: salvam no blur ---------- */
-  els.name.addEventListener('blur', () => queueSave({ display_name: els.name.value }));
+  els.name.addEventListener('blur', () => {
+    queueSave({ display_name: els.name.value });
+    // Atualiza as iniciais do avatar no chat assim que o nome é salvo,
+    // sem precisar recarregar a página.
+    if (window.HermesRefreshUserInitials) {
+      setTimeout(window.HermesRefreshUserInitials, 550);
+    }
+  });
   els.about.addEventListener('blur', () => queueSave({ about: els.about.value || null }));
   els.nickname.addEventListener('blur', () => queueSave({ hermes_nickname: els.nickname.value || null }));
   els.personalityCustom.addEventListener('blur', () => queueSave({ personality_custom: els.personalityCustom.value || null }));

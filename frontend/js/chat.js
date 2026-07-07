@@ -17,8 +17,61 @@ const sendBtn = document.getElementById('send-btn');
 let typingIndicator = null;
 let planCard = null; // referência ao card do plano ativo
 
+/* ---------- Iniciais do usuário no avatar (em vez de "FS" fixo) ---------- */
+// Antes o avatar do usuário mostrava sempre o texto fixo "FS", ignorando o
+// nome salvo no perfil. Agora buscamos o display_name salvo e calculamos as
+// iniciais dinamicamente, com um valor neutro de fallback enquanto carrega
+// ou caso o nome ainda não tenha sido preenchido.
+let cachedUserInitials = '👤';
+
+// ---------- Preferência de "Mostrar pensamento" ----------
+// O toggle em Configurações (show-thinking-toggle) persistia corretamente
+// no backend via PATCH /profile, mas o chat nunca lia esse valor de volta:
+// o payload enviado ao backend usava "show_thinking: mode === 'analyst'",
+// um valor fixo que ignorava por completo a preferência do usuário — por
+// isso o toggle não tinha efeito nenhum fora do modo analista. Além disso,
+// profile.js chamava "window.HermesSetShowThinking(...)", uma função que
+// nunca existia em lugar nenhum do código (só o fallback via saveNow()
+// direto rodava, que persiste no banco mas não atualiza o chat ao vivo).
+let cachedShowThinkingEnabled = false;
+
+function computeInitials(name) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return '👤';
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+async function refreshCachedProfilePrefs() {
+  try {
+    const res = await fetch(`${window.HermesState.API_BASE}/profile/`);
+    if (!res.ok) throw new Error('Falha ao carregar perfil');
+    const profile = await res.json();
+    cachedUserInitials = computeInitials(profile.display_name);
+    cachedShowThinkingEnabled = !!profile.show_thinking;
+    // Atualiza avatares já renderizados na tela (ex.: se o nome mudou
+    // enquanto o usuário já tinha mensagens no histórico).
+    document.querySelectorAll('.avatar.user').forEach((el) => {
+      el.textContent = cachedUserInitials;
+    });
+  } catch (err) {
+    console.error('[Hermes] Erro ao carregar preferências do perfil:', err);
+  }
+}
+refreshCachedProfilePrefs();
+// Permite que profile.js peça atualização imediata após salvar o nome.
+window.HermesRefreshUserInitials = refreshCachedProfilePrefs;
+// Chamado pelo toggle "Mostrar pensamento" em Configurações assim que o
+// usuário muda a opção — atualiza o valor usado nas PRÓXIMAS mensagens
+// imediatamente, sem esperar um novo carregamento da página.
+window.HermesSetShowThinking = function (enabled) {
+  cachedShowThinkingEnabled = !!enabled;
+};
+
 /**
  * Adiciona uma mensagem na conversa.
+
  * @param {'user'|'hermes'} role
  * @param {string} text
  * @param {string} [messageId] - id da mensagem no backend (permite editar depois)
@@ -34,7 +87,7 @@ function addMessage(role, text, messageId) {
 
   const avatar = document.createElement('div');
   avatar.className = 'avatar ' + (role === 'user' ? 'user' : 'hermes');
-  if (role === 'user') avatar.textContent = 'FS';
+  if (role === 'user') avatar.textContent = cachedUserInitials;
 
   const bubbleWrap = document.createElement('div');
   if (role !== 'user') {
@@ -50,7 +103,12 @@ function addMessage(role, text, messageId) {
     bubble.textContent = text;
   } else {
     bubble.innerHTML = renderMarkdown(text);
+    addCopyButtonsToCodeBlocks(bubble);
   }
+  // Botão de copiar mensagem: disponível tanto para o usuário quanto para
+  // o Hermes. Usa sempre o texto original (não o HTML), então funciona
+  // mesmo que a mensagem ainda mude (ex.: streaming) — lê o valor "ao vivo".
+  addMessageCopyButton(bubble, () => (role === 'user' ? bubble.textContent : text));
   bubbleWrap.appendChild(bubble);
 
   // Mensagens do usuário podem ser editadas (edição reenvia e "ramifica"
@@ -300,6 +358,88 @@ function escapeHtml(str) {
  * @param {string} text
  * @returns {string} HTML pronto para innerHTML
  */
+/**
+ * Copia texto para a área de transferência, com fallback para navegadores/
+ * contextos sem suporte a navigator.clipboard (ex.: contexto não-seguro).
+ * @param {string} text
+ * @returns {Promise<boolean>} sucesso
+ */
+async function copyTextToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (err) {
+    console.error('[Hermes] navigator.clipboard falhou, tentando fallback:', err);
+  }
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand('copy');
+    textarea.remove();
+    return ok;
+  } catch (err) {
+    console.error('[Hermes] Falha ao copiar texto:', err);
+    return false;
+  }
+}
+
+/**
+ * Adiciona um botão "copiar" flutuante na bolha de uma mensagem (texto
+ * completo da mensagem, sem formatação markdown).
+ * @param {HTMLElement} bubble
+ * @param {() => string} getRawText - função que retorna o texto puro atual
+ */
+function addMessageCopyButton(bubble, getRawText) {
+  if (!bubble || bubble.querySelector(':scope > .msg-copy-btn')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'msg-copy-btn';
+  btn.title = 'Copiar mensagem';
+  btn.textContent = '📋';
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const ok = await copyTextToClipboard(getRawText());
+    btn.textContent = ok ? '✅' : '⚠️';
+    setTimeout(() => { btn.textContent = '📋'; }, 1500);
+  });
+  bubble.appendChild(btn);
+}
+
+/**
+ * Percorre os blocos de código (<pre><code>) já renderizados dentro de uma
+ * bolha e adiciona um botão de copiar em cada um, caso ainda não tenha.
+ * Chamada sempre que o HTML da bolha é (re)gerado a partir de markdown,
+ * inclusive durante o streaming (re-render incremental).
+ * @param {HTMLElement} bubble
+ */
+function addCopyButtonsToCodeBlocks(bubble) {
+  if (!bubble) return;
+  bubble.querySelectorAll('pre').forEach((pre) => {
+    if (pre.querySelector(':scope > .code-copy-btn')) return; // já tem botão
+    pre.classList.add('has-copy-btn');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'code-copy-btn';
+    btn.title = 'Copiar código';
+    btn.textContent = 'Copiar';
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const codeEl = pre.querySelector('code') || pre;
+      const ok = await copyTextToClipboard(codeEl.textContent || '');
+      btn.textContent = ok ? 'Copiado!' : 'Falhou';
+      setTimeout(() => { btn.textContent = 'Copiar'; }, 1500);
+    });
+    pre.appendChild(btn);
+  });
+}
+
 function renderMarkdown(text) {
   const raw = text || '';
   try {
@@ -339,6 +479,10 @@ function createMarkdownRenderScheduler(getBubble, getText) {
     const bubble = getBubble();
     if (!bubble) return;
     bubble.innerHTML = renderMarkdown(getText());
+    // innerHTML foi totalmente substituído: os botões de copiar (mensagem e
+    // blocos de código) precisam ser reinseridos a cada re-render.
+    addCopyButtonsToCodeBlocks(bubble);
+    addMessageCopyButton(bubble, () => getText());
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
@@ -513,8 +657,10 @@ async function runChatTurnAndRenderReply(chatId, userText, mode, projectId, atta
       domain: domain || null,
       project_id: projectId || null,
       chat_id: chatId,
-      // Pensamento visível: ativado apenas no modo analista
-      show_thinking: mode === 'analyst',
+      // Pensamento visível: respeita a preferência salva em Configurações,
+      // e continua sempre ativado no modo analista (que já narra etapas
+      // do processo de decomposição/verificação).
+      show_thinking: cachedShowThinkingEnabled || mode === 'analyst',
       web_search: !!window.HermesState.webSearchEnabled,
       // IDs dos arquivos anexados (upload por clique ou drag-and-drop) que
       // devem ser incluídos no contexto desta mensagem pelo backend.

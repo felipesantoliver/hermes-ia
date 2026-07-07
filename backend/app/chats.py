@@ -36,6 +36,10 @@ class MessageCreate(BaseModel):
     content: str = Field(..., min_length=1)
 
 
+class MessageUpdate(BaseModel):
+    content: str = Field(..., min_length=1)
+
+
 class MessageOut(BaseModel):
     id: str
     chat_id: str
@@ -202,4 +206,40 @@ def create_message(chat_id: str, payload: MessageCreate):
         )
         cur.execute("UPDATE chats SET updated_at = ? WHERE id = ?", (ts, chat_id))
         cur.execute("SELECT * FROM messages WHERE id = ?", (mid,))
+        return _row_to_message(cur.fetchone())
+
+
+@router.patch("/{chat_id}/messages/{message_id}", response_model=MessageOut)
+def update_message(chat_id: str, message_id: str, payload: MessageUpdate):
+    """Edita o conteúdo de uma mensagem existente e "ramifica" a conversa:
+    todas as mensagens criadas DEPOIS dela (created_at maior) são apagadas,
+    já que o frontend vai pedir uma nova resposta do agente a partir do
+    texto editado. Sem essa rota, o botão de editar do frontend chamava um
+    endpoint inexistente e nunca funcionava de fato."""
+    with db_cursor() as cur:
+        _get_chat_or_404(cur, chat_id)
+
+        cur.execute(
+            "SELECT * FROM messages WHERE id = ? AND chat_id = ?", (message_id, chat_id)
+        )
+        message_row = cur.fetchone()
+        if message_row is None:
+            raise HTTPException(status_code=404, detail="Mensagem não encontrada")
+
+        ts = now_iso()
+
+        # Remove tudo que veio depois desta mensagem (ramificação da conversa).
+        cur.execute(
+            """DELETE FROM messages
+               WHERE chat_id = ? AND created_at > ?""",
+            (chat_id, message_row["created_at"]),
+        )
+
+        cur.execute(
+            "UPDATE messages SET content = ? WHERE id = ?",
+            (payload.content, message_id),
+        )
+        cur.execute("UPDATE chats SET updated_at = ? WHERE id = ?", (ts, chat_id))
+
+        cur.execute("SELECT * FROM messages WHERE id = ?", (message_id,))
         return _row_to_message(cur.fetchone())

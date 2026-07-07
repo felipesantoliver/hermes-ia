@@ -133,3 +133,59 @@ def build_profile_system_section(profile: Optional[dict]) -> str:
     if block:
         return block + "\n\n" + SAFETY_FLOOR
     return SAFETY_FLOOR
+
+
+def build_profile_reminder_section(profile: Optional[dict]) -> str:
+    """
+    Reforço curto e direto de personalidade/tom/emojis, pensado para ser
+    anexado no FINAL do system prompt (depois de tools, prompt do agente e
+    contexto de memória), não logo no início como o bloco principal acima.
+
+    Motivo: o system prompt final é montado assim, em ordem:
+      1. identidade base + este bloco principal (build_profile_system_section)
+      2. instruções do projeto / modo
+      3. prompt específico do agente (ex.: firmware, android)
+      4. descrição das ferramentas disponíveis (pode ser um bloco longo,
+         ainda mais com o modo de busca web ativado)
+      5. contexto de memória (RAG)
+
+    Ou seja, a preferência de personalidade/emoji do usuário virava o
+    PRIMEIRO item de um prompt longo, e modelos locais menores tendem a dar
+    mais peso às instruções mais RECENTES (mais perto do final) do que às
+    do início quando há bastante conteúdo no meio — o que na prática fazia
+    a personalidade/emoji configurados parecerem ignorados. Este bloco
+    repete o essencial de forma compacta, para ser colado por último.
+    """
+    if not profile:
+        return ""
+
+    bits = []
+
+    personality = profile.get("personality")
+    if personality == "personalizado" and profile.get("personality_custom"):
+        bits.append(f"personalidade: {profile['personality_custom']}")
+    elif personality in PERSONALITY_PHRASES:
+        bits.append(PERSONALITY_PHRASES[personality].rstrip("."))
+
+    emoji = profile.get("emoji_level")
+    if emoji in EMOJI_PHRASES:
+        bits.append(EMOJI_PHRASES[emoji].rstrip("."))
+
+    warmth = profile.get("warmth_level")
+    if warmth in WARMTH_PHRASES:
+        bits.append(WARMTH_PHRASES[warmth].rstrip("."))
+
+    enthusiasm = profile.get("enthusiasm_level")
+    if enthusiasm in ENTHUSIASM_PHRASES:
+        bits.append(ENTHUSIASM_PHRASES[enthusiasm].rstrip("."))
+
+    if not bits:
+        return ""
+
+    joined = "; ".join(bits)
+    return (
+        "LEMBRETE FINAL DE TOM — aplique isto em TODA a resposta que você "
+        "está prestes a escrever agora, mesmo com tudo o que foi dito antes "
+        f"sobre ferramentas, agente ou contexto: {joined}. Isso vale para a "
+        "resposta inteira, do início ao fim, não só na saudação."
+    )

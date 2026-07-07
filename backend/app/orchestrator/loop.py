@@ -64,6 +64,8 @@ class AgentLoop:
         mode: Optional[str],
         enabled_tools: Optional[List[str]] = None,
         agent_type: Optional[str] = None,
+        web_search: bool = False,
+        profile_reminder: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         conv = messages.copy()
 
@@ -90,11 +92,36 @@ class AgentLoop:
                 tools_desc = "\n".join([f"- {t.name}: {t.description}" for t in tools])
                 tool_instruction = (
                     "Você tem acesso às seguintes ferramentas. Se precisar executar uma ação, "
-                    "responda com um JSON contendo o nome da tool e seus parâmetros. Caso contrário, "
-                    "responda normalmente.\n\nFerramentas disponíveis:\n" + tools_desc
+                    "responda com APENAS um objeto JSON contendo \"tool\" (nome da ferramenta) e "
+                    "\"parameters\" (seus parâmetros) — nada de texto antes ou depois, e sem "
+                    "envolver em blocos de código markdown (```). Exemplo do formato exato: "
+                    '{"tool": "nome_da_ferramenta", "parameters": {"chave": "valor"}}. '
+                    "Se não precisar de nenhuma ferramenta, responda normalmente em texto.\n\n"
+                    "Ferramentas disponíveis:\n" + tools_desc
                 )
             else:
                 tool_instruction = "Você não tem ferramentas disponíveis para esta conversa."
+
+            # Quando o usuário ativa explicitamente o modo web (toggle "web_search"
+            # na UI), a instrução acima ("se precisar") é passiva demais: o modelo
+            # frequentemente decide não buscar e responde do próprio conhecimento,
+            # que pode estar desatualizado — esse era o motivo do modo web parecer
+            # "não trazer informação atualizada". Quando ativo, tornamos o uso da
+            # ferramenta OBRIGATÓRIO como primeiro passo, sempre que a pergunta
+            # envolver algo que possa ter mudado (fatos atuais, notícias, preços,
+            # versões, eventos recentes, etc.).
+            if web_search and "web_search" in tool_names:
+                tool_instruction += (
+                    "\n\nMODO DE BUSCA WEB ATIVADO: o usuário ligou explicitamente a busca "
+                    "na web para esta conversa. Isso significa que você DEVE chamar a "
+                    "ferramenta 'web_search' ANTES de responder sempre que a pergunta "
+                    "envolver informação que possa estar desatualizada em relação ao seu "
+                    "treinamento (notícias, eventos recentes, versões de software, preços, "
+                    "datas, status atual de pessoas/empresas/produtos, etc.). Não responda "
+                    "apenas com base no que você já sabe nesses casos — busque primeiro. "
+                    "Se a ferramenta retornar um erro (ex.: SearXNG indisponível), informe "
+                    "isso claramente ao usuário em vez de responder como se tivesse buscado."
+                )
 
             if sys_msg:
                 sys_msg["content"] += "\n\n" + tool_instruction
@@ -119,7 +146,65 @@ class AgentLoop:
         if memory_block:
             sys_msg["content"] += "\n\n" + memory_block
 
+        # Reforço final de personalidade/tom/emoji (ver docstring de
+        # build_profile_reminder_section): precisa ser o ÚLTIMO item
+        # anexado ao system prompt, depois de tools/agente/memória, para
+        # que modelos locais menores dêem a ele o peso de recência que
+        # instruções de tom precisam para serem seguidas de forma
+        # consistente — antes disso, a preferência do usuário ficava
+        # enterrada no início de um prompt longo e era frequentemente
+        # ignorada na prática.
+        if profile_reminder:
+            sys_msg["content"] += "\n\n" + profile_reminder
+
         return conv
+
+    # ------------------------------------------------------------------
+    # Extração tolerante de tool-call em JSON
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _extract_tool_call_json(text: str) -> Optional[dict]:
+        """
+        Tenta extrair um objeto JSON de tool-call (com as chaves "tool" e
+        "parameters") do texto retornado pelo modelo.
+
+        Antes, a detecção exigia que a resposta INTEIRA fosse um JSON válido
+        (json.loads(response) direto). Na prática, modelos locais menores
+        frequentemente não respondem com JSON "puro": envolvem o objeto em
+        um bloco de código markdown (```json ... ``` ou ``` ... ```), ou
+        adicionam uma frase antes/depois (ex.: "Vou buscar isso: {...}").
+        Nesses casos, json.loads falhava e a ferramenta (incluindo
+        'web_search') NUNCA era chamada — o modelo simplesmente respondia
+        como texto normal, ignorando o resultado de qualquer busca, o que
+        explicava boa parte dos casos de "modo web não traz informação
+        atualizada" mesmo com a instrução de sistema reforçada.
+
+        Esta versão tenta, em ordem: (1) blocos ```json ... ``` ou ``` ... ```
+        no texto; (2) a primeira '{' até a última '}' do texto inteiro;
+        (3) o texto inteiro, como antes. Retorna o dict apenas se ele
+        realmente tiver as chaves esperadas de um tool-call.
+        """
+        import re
+
+        candidates = []
+        for m in re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL):
+            candidates.append(m.group(1))
+
+        first_brace = text.find("{")
+        last_brace = text.rfind("}")
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            candidates.append(text[first_brace:last_brace + 1])
+
+        candidates.append(text.strip())
+
+        for candidate in candidates:
+            try:
+                data = json.loads(candidate)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if isinstance(data, dict) and "tool" in data and "parameters" in data:
+                return data
+        return None
 
     # ------------------------------------------------------------------
     # Execução de tool com verificação de pressão
@@ -363,6 +448,7 @@ class AgentLoop:
         agent_type: Optional[str] = None,
         web_search: bool = False,
         domain: Optional[str] = None,
+        profile_reminder: Optional[str] = None,
     ) -> str:
         enabled_tools = DEFAULT_TOOLS.copy()
         if web_search:
@@ -374,7 +460,8 @@ class AgentLoop:
             enabled_tools.append("layout_validator")
 
         conv = self._prepare_conversation(
-            messages, project_id, chat_id, mode, enabled_tools, agent_type=agent_type
+            messages, project_id, chat_id, mode, enabled_tools, agent_type=agent_type,
+            web_search=web_search, profile_reminder=profile_reminder
         )
 
         # Modo Analista
@@ -413,22 +500,28 @@ class AgentLoop:
                 logger.error(f"Erro no LLM: {e}")
                 return f"Erro interno: {str(e)}"
 
-            # Tentar interpretar como tool call
-            try:
-                data = json.loads(response)
-                if "tool" in data and "parameters" in data:
-                    tool_name = data["tool"]
-                    params = data["parameters"]
-                    if show_thinking:
-                        pass  # (variável não existe neste método não-streaming)
-                    result = self._resolve_tool_result(tool_name, params, enabled_tools)
-                    conv.append({"role": "assistant", "content": response})
-                    conv.append({
-                        "role": "user",
-                        "content": f"Resultado da ferramenta {tool_name}: {result.data if result.success else f'Erro: {result.error}'}"
-                    })
-                    continue
-            except json.JSONDecodeError:
+            # Tentar interpretar como tool call (extração tolerante — ver
+            # _extract_tool_call_json). Só tentamos a extração se a resposta
+            # já DÁ SINAL de ser uma tentativa de tool call (começa com "{"
+            # ou abre um bloco ```json) — sem esse filtro, uma resposta de
+            # texto normal que mencionasse as palavras "tool"/"parameters"
+            # (ex.: o usuário perguntando como funciona o protocolo de tool
+            # call do próprio app) poderia ser incorretamente tratada como
+            # uma chamada de ferramenta real.
+            stripped_response = response.lstrip()
+            looks_like_tool_call = stripped_response.startswith("{") or stripped_response.startswith("```json")
+            data = self._extract_tool_call_json(response) if looks_like_tool_call else None
+            if data is not None:
+                tool_name = data["tool"]
+                params = data["parameters"]
+                result = self._resolve_tool_result(tool_name, params, enabled_tools)
+                conv.append({"role": "assistant", "content": response})
+                conv.append({
+                    "role": "user",
+                    "content": f"Resultado da ferramenta {tool_name}: {result.data if result.success else f'Erro: {result.error}'}"
+                })
+                continue
+            else:
                 self._log_conversation(chat_id, project_id, conv, response)
                 return response
 
@@ -447,6 +540,7 @@ class AgentLoop:
         show_thinking: bool = False,
         web_search: bool = False,
         domain: Optional[str] = None,
+        profile_reminder: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, str]]:
         enabled_tools = DEFAULT_TOOLS.copy()
         if web_search:
@@ -458,7 +552,8 @@ class AgentLoop:
             enabled_tools.append("layout_validator")
 
         conv = self._prepare_conversation(
-            messages, project_id, chat_id, mode, enabled_tools, agent_type=agent_type
+            messages, project_id, chat_id, mode, enabled_tools, agent_type=agent_type,
+            web_search=web_search, profile_reminder=profile_reminder
         )
 
         def thought(text: str):
@@ -548,7 +643,17 @@ class AgentLoop:
                     if is_tool_call is None:
                         stripped = buffer.lstrip()
                         if stripped:
-                            is_tool_call = stripped.startswith("{")
+                            # Tolerante: além de já começar com "{" (JSON puro),
+                            # também tratamos como possível tool call quando o
+                            # modelo abre especificamente um bloco ```json —
+                            # padrão comum em modelos locais menores mesmo
+                            # quando instruídos a responder só com JSON puro.
+                            # Importante: NÃO tratamos qualquer ``` genérico
+                            # como tool call (```python, ```cpp, etc. são
+                            # respostas de código completamente normais no
+                            # modo programação) — isso pausaria o streaming
+                            # ao vivo dessas respostas sem necessidade.
+                            is_tool_call = stripped.startswith("{") or stripped.startswith("```json")
                     if is_tool_call is False:
                         yield {"event": "token", "data": token}
             except Exception as e:
@@ -559,14 +664,12 @@ class AgentLoop:
             response = buffer
 
             if is_tool_call:
-                try:
-                    data = json.loads(response)
-                except json.JSONDecodeError:
-                    self._log_conversation(chat_id, project_id, conv, response)
-                    yield {"event": "token", "data": response}
-                    return
+                # Extração tolerante (ver _extract_tool_call_json): cobre
+                # tanto JSON puro quanto blocos ```json ... ``` ou texto com
+                # algo antes/depois do objeto.
+                data = self._extract_tool_call_json(response)
 
-                if "tool" in data and "parameters" in data:
+                if data is not None:
                     tool_name = data["tool"]
                     params = data["parameters"]
                     if show_thinking:
@@ -584,6 +687,9 @@ class AgentLoop:
                     })
                     continue
                 else:
+                    # Não era de fato um tool call (ex.: começou com ``` mas
+                    # era só um bloco de código na resposta normal) — envia
+                    # o texto acumulado ao usuário em vez de descartá-lo.
                     self._log_conversation(chat_id, project_id, conv, response)
                     yield {"event": "token", "data": response}
                     return

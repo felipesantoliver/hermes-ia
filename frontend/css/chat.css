@@ -10,6 +10,12 @@
 @keyframes msgIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 .msg.user{align-self:flex-end;flex-direction:row-reverse;max-width:80%;}
 
+/* Itens flex por padrão têm min-width:auto, o que IMPEDE overflow-wrap de
+   fazer efeito (o conteúdo força o item a crescer em vez de quebrar).
+   min-width:0 é o que realmente destrava a quebra de texto dentro do
+   layout flex usado aqui. */
+.msg > div{min-width:0;flex:1 1 auto;}
+
 .avatar{
   width:28px;height:28px;border-radius:50%;flex-shrink:0;margin-top:2px;
   display:flex;align-items:center;justify-content:center;
@@ -20,12 +26,112 @@
 }
 .avatar.user{background:var(--bg-elevated);border:1px solid var(--line);color:var(--text-mid);font-size:11px;font-family:var(--font-display);}
 
-.bubble{font-size:14.5px;line-height:1.65;color:var(--text-hi);padding-top:2px;}
+.bubble{
+  font-size:14.5px;line-height:1.65;color:var(--text-hi);padding-top:2px;position:relative;
+  /* Sem isso, textos sem espaços (URLs longas, tokens, hashes, nomes de
+     arquivo compridos, etc.) estouravam a largura da bolha e do próprio
+     container de mensagens — só ficava visível quando o texto tinha
+     alguma palavra "quebrável" grande o suficiente, por isso o bug
+     parecia acontecer "às vezes". */
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
 .msg.user .bubble{
   background:var(--bg-elevated);border:1px solid var(--line);
   padding:11px 15px;border-radius:16px 16px 4px 16px;
 }
 .msg-meta{font-size:10px;color:var(--text-low);letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px;}
+
+/* --- Edição de mensagem (botão ✎ / textarea inline) --- */
+.msg-edit-btn{
+  align-self:flex-start;margin-top:2px;
+  width:22px;height:22px;border-radius:50%;
+  border:1px solid var(--line);background:transparent;
+  color:var(--text-low);font-size:11px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .15s ease, color .15s ease;
+}
+.msg.user:hover .msg-edit-btn{opacity:1;}
+.msg-edit-btn:hover{color:var(--text-hi);border-color:var(--purple-soft);}
+@media (hover:none){
+  .msg-edit-btn{opacity:1;}
+}
+.msg.editing .bubble{padding:8px;}
+.edit-msg-textarea{
+  width:100%;min-height:70px;resize:vertical;
+  background:var(--bg-panel);color:var(--text-hi);
+  border:1px solid var(--purple-soft);border-radius:10px;
+  font-family:var(--font-body);font-size:14.5px;line-height:1.5;
+  padding:8px 10px;outline:none;
+}
+.edit-msg-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px;}
+.edit-msg-save-btn,.edit-msg-cancel-btn{
+  font-size:12.5px;padding:6px 14px;border-radius:20px;cursor:pointer;
+  border:1px solid var(--line);background:var(--bg-elevated);color:var(--text-mid);
+  transition:all .15s ease;
+}
+.edit-msg-save-btn{background:var(--purple-soft);border-color:var(--purple);color:var(--text-hi);}
+.edit-msg-save-btn:hover{filter:brightness(1.1);}
+.edit-msg-cancel-btn:hover{color:var(--text-hi);border-color:var(--purple-soft);}
+.edit-msg-save-btn:disabled,.edit-msg-cancel-btn:disabled{opacity:.5;cursor:default;}
+
+/* --- Quebra de texto dentro do conteúdo markdown renderizado --- */
+/* Blocos de código (<pre><code>) mantêm a formatação original (sem
+   quebrar linhas no meio do código), mas ganham scroll horizontal quando
+   uma linha é mais larga que a bolha, em vez de estourar o layout. */
+.bubble pre{
+  overflow-x:auto;
+  white-space:pre;
+  max-width:100%;
+  position:relative;
+}
+.bubble pre code{
+  white-space:pre;
+}
+/* Código inline (fora de blocos <pre>) deve quebrar junto com o texto ao
+   redor, já que normalmente é curto (nome de variável, comando, etc.) mas
+   pode ocasionalmente ser uma string longa sem espaços. */
+.bubble :not(pre) > code{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+/* Links e outros elementos inline também respeitam a largura da bolha. */
+.bubble a{overflow-wrap:anywhere;word-break:break-word;}
+.bubble table{display:block;max-width:100%;overflow-x:auto;}
+.bubble img{max-width:100%;height:auto;}
+
+/* --- Botão de copiar mensagem --- */
+/* Fica escondido até o usuário passar o mouse sobre a mensagem, para não
+   poluir a UI. Em telas de toque (sem hover), fica sempre visível. */
+.msg-copy-btn{
+  position:absolute;top:-6px;right:-6px;
+  width:24px;height:24px;border-radius:50%;
+  border:1px solid var(--line);background:var(--bg-elevated);
+  color:var(--text-mid);font-size:12px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;opacity:0;transition:opacity .15s ease, color .15s ease;
+  padding:0;
+}
+.msg.user .msg-copy-btn{right:auto;left:-6px;}
+.msg:hover .msg-copy-btn{opacity:1;}
+.msg-copy-btn:hover{color:var(--text-hi);border-color:var(--purple-soft);}
+@media (hover:none){
+  .msg-copy-btn{opacity:1;}
+}
+
+/* --- Botão de copiar em blocos de código markdown --- */
+.code-copy-btn{
+  position:absolute;top:6px;right:6px;
+  font-size:11px;padding:4px 9px;border-radius:6px;
+  border:1px solid var(--line);background:var(--bg-panel);
+  color:var(--text-mid);cursor:pointer;
+  opacity:0;transition:opacity .15s ease, color .15s ease;
+}
+.bubble pre:hover .code-copy-btn{opacity:1;}
+.code-copy-btn:hover{color:var(--text-hi);border-color:var(--purple-soft);}
+@media (hover:none){
+  .code-copy-btn{opacity:1;}
+}
 
 .empty-state{
   display:flex;flex-direction:column;align-items:center;justify-content:center;

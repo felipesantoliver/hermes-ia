@@ -14,7 +14,7 @@ from .orchestrator.router import select_agent
 from .orchestrator.analyst import should_use_analyst_mode
 from .orchestrator.context_builder import build_attachments_block
 from .llm import LLMClient, get_llm_client
-from .profile_prompt import build_profile_system_section
+from .profile_prompt import build_profile_system_section, build_profile_reminder_section
 
 router = APIRouter()
 
@@ -140,6 +140,10 @@ async def _build_chat_context(payload: ChatRequest) -> dict:
         "project_id": payload.project_id,
         "web_search": payload.web_search,
         "domain": payload.domain,
+        # Reforço compacto de personalidade/tom/emoji, para ser anexado no
+        # FINAL do system prompt (ver build_profile_reminder_section) — o
+        # bloco completo já foi incluído mais acima, no início do prompt.
+        "profile_reminder": build_profile_reminder_section(profile_dict),
     }
 
 
@@ -170,6 +174,7 @@ async def chat_endpoint(
         agent_type=ctx["agent_type"],
         web_search=ctx["web_search"],
         domain=ctx["domain"],           # passado para o loop, mesmo que não seja usado diretamente
+        profile_reminder=ctx["profile_reminder"],
     )
 
     _save_hermes_reply(payload.chat_id, result)
@@ -216,6 +221,7 @@ async def _sse_event_stream(payload: ChatRequest, llm: LLMClient) -> AsyncIterat
             show_thinking=payload.show_thinking,
             web_search=ctx["web_search"],
             domain=ctx["domain"],           # passado para o loop, mesmo que não seja usado diretamente
+            profile_reminder=ctx["profile_reminder"],
         ):
             event_type = item.get("event", "token")
             data = item.get("data", "")

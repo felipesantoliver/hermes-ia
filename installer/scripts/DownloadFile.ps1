@@ -19,11 +19,21 @@ param(
     [Parameter(Mandatory = $true)][string]$Url,
     [Parameter(Mandatory = $true)][string]$Destination,
     [Parameter(Mandatory = $true)][string]$StatusFile,
-    [Parameter(Mandatory = $true)][string]$LogFile
+    [Parameter(Mandatory = $true)][string]$LogFile,
+    [Parameter(Mandatory = $false)][string]$PidFile,
+    [Parameter(Mandatory = $false)][string]$CancelFile
 )
 
 $ErrorActionPreference = "Stop"
 $jobName = "HermesAI-ModelDownload"
+
+# Grava o próprio PID assim que possível, para que o instalador (Inno Setup)
+# consiga localizar e encerrar este processo caso o usuário clique em
+# "Cancelar download" — antes disso, não havia nenhuma forma de interromper
+# o download em andamento a partir da UI do instalador.
+if ($PidFile) {
+    try { [System.IO.File]::WriteAllText($PidFile, $PID.ToString()) } catch {}
+}
 
 function Write-Status {
     param($State, $Percent, $Transferred, $Total, $Message)
@@ -72,6 +82,20 @@ try {
 
     do {
         Start-Sleep -Seconds 1
+
+        # Cancelamento solicitado pelo instalador (botão "Cancelar download"):
+        # sem isso, mesmo matando este processo PowerShell, o BITS continuaria
+        # baixando o arquivo em segundo plano gerenciado pelo Windows.
+        if ($CancelFile -and (Test-Path $CancelFile)) {
+            Write-Log "Download cancelado pelo usuário."
+            $jobToRemove = Get-BitsTransfer -JobId $jobId -ErrorAction SilentlyContinue
+            if ($jobToRemove) {
+                Remove-BitsTransfer -BitsJob $jobToRemove -ErrorAction SilentlyContinue
+            }
+            Write-Status "cancelled" 0 0 0 "Download cancelado pelo usuário."
+            exit 2
+        }
+
         # Reconsulta pelo JobId (identificador único e estável) em vez do
         # nome: logo após a criação assíncrona pode haver uma pequena janela
         # em que o BITS ainda não indexou o job para busca por -Name, o que

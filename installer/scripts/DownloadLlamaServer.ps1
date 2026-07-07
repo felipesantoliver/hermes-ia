@@ -28,11 +28,18 @@ param(
     [Parameter(Mandatory = $true)][ValidateSet("cpu", "vulkan")][string]$Variant,
     [Parameter(Mandatory = $true)][string]$DestDir,
     [Parameter(Mandatory = $true)][string]$StatusFile,
-    [Parameter(Mandatory = $true)][string]$LogFile
+    [Parameter(Mandatory = $true)][string]$LogFile,
+    [Parameter(Mandatory = $false)][string]$PidFile
 )
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# Grava o próprio PID assim que possível, para que o instalador consiga
+# encerrar este processo caso o usuário clique em "Cancelar download".
+if ($PidFile) {
+    try { [System.IO.File]::WriteAllText($PidFile, $PID.ToString()) } catch {}
+}
 
 function Write-Status {
     param($State, $Percent, $Message)
