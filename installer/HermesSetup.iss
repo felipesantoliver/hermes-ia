@@ -370,14 +370,18 @@ end;
   encerramento imediato. }
 procedure KillCurrentDownloadProcess;
 var
+  PidAnsi: AnsiString;
   PidStr: String;
   ResultCode: Integer;
 begin
   if (CurrentDownloadPidFile = '') or not FileExists(CurrentDownloadPidFile) then
     Exit;
-  if LoadStringFromFile(CurrentDownloadPidFile, PidStr) then
+  { LoadStringFromFile exige um parâmetro AnsiString (não String/Unicode) —
+    mesmo padrão usado com StatusJson mais abaixo neste arquivo. Usar
+    String direto aqui causava "Type mismatch" na compilação. }
+  if LoadStringFromFile(CurrentDownloadPidFile, PidAnsi) then
   begin
-    PidStr := Trim(PidStr);
+    PidStr := Trim(Utf8ToUnicode(PidAnsi));
     if PidStr <> '' then
       Exec(ExpandConstant('{sys}\taskkill.exe'), '/PID ' + PidStr + ' /T /F', '',
         SW_HIDE, ewWaitUntilTerminated, ResultCode);
@@ -399,7 +403,7 @@ begin
   begin
     DownloadWasCancelled := True;
     if CurrentCancelFile <> '' then
-      SaveStringToFile(CurrentCancelFile, '1', False);
+      SaveStringToFile(CurrentCancelFile, AnsiString('1'), False);
 
     { O download do modelo usa BITS (Background Intelligent Transfer Service),
       um job gerenciado pelo próprio Windows, INDEPENDENTE do processo
