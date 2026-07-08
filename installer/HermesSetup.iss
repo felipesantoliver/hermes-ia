@@ -396,6 +396,7 @@ end;
 procedure CancelDownloadButtonClick(Sender: TObject);
 var
   ResultCode: Integer;
+  CancelFlagContent: AnsiString;
 begin
   if MsgBox('Tem certeza que deseja cancelar o download?' + #13#10 +
      'O Hermes AI será instalado, mas você precisará baixar o modelo e/ou ' +
@@ -403,7 +404,10 @@ begin
   begin
     DownloadWasCancelled := True;
     if CurrentCancelFile <> '' then
-      SaveStringToFile(CurrentCancelFile, AnsiString('1'), False);
+    begin
+      CancelFlagContent := '1';
+      SaveStringToFile(CurrentCancelFile, CancelFlagContent, False);
+    end;
 
     { O download do modelo usa BITS (Background Intelligent Transfer Service),
       um job gerenciado pelo próprio Windows, INDEPENDENTE do processo
