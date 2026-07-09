@@ -13,8 +13,11 @@
 /* Itens flex por padrão têm min-width:auto, o que IMPEDE overflow-wrap de
    fazer efeito (o conteúdo força o item a crescer em vez de quebrar).
    min-width:0 é o que realmente destrava a quebra de texto dentro do
-   layout flex usado aqui. */
-.msg > div{min-width:0;flex:1 1 auto;}
+   layout flex usado aqui. Importante: :not(.avatar), porque o avatar
+   também é um <div> filho direto de .msg — sem essa exclusão, o avatar
+   herdava flex:1 1 auto (maior especificidade que a regra .avatar) e
+   crescia para preencher o espaço disponível, deformando a bolinha. */
+.msg > div:not(.avatar){min-width:0;flex:1 1 auto;}
 
 .avatar{
   width:28px;height:28px;border-radius:50%;flex-shrink:0;margin-top:2px;
@@ -99,25 +102,6 @@
 .bubble a{overflow-wrap:anywhere;word-break:break-word;}
 .bubble table{display:block;max-width:100%;overflow-x:auto;}
 .bubble img{max-width:100%;height:auto;}
-
-/* --- Botão de copiar mensagem --- */
-/* Fica escondido até o usuário passar o mouse sobre a mensagem, para não
-   poluir a UI. Em telas de toque (sem hover), fica sempre visível. */
-.msg-copy-btn{
-  position:absolute;top:-6px;right:-6px;
-  width:24px;height:24px;border-radius:50%;
-  border:1px solid var(--line);background:var(--bg-elevated);
-  color:var(--text-mid);font-size:12px;line-height:1;
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;opacity:0;transition:opacity .15s ease, color .15s ease;
-  padding:0;
-}
-.msg.user .msg-copy-btn{right:auto;left:-6px;}
-.msg:hover .msg-copy-btn{opacity:1;}
-.msg-copy-btn:hover{color:var(--text-hi);border-color:var(--purple-soft);}
-@media (hover:none){
-  .msg-copy-btn{opacity:1;}
-}
 
 /* --- Botão de copiar em blocos de código markdown --- */
 .code-copy-btn{

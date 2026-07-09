@@ -294,6 +294,13 @@ def main() -> None:
         height=WINDOW_H,
         min_size=(WINDOW_MIN_W, WINDOW_MIN_H),
         background_color="#0b0b0f",
+        # O pywebview desabilita a seleção de texto com o mouse por padrão
+        # (text_select=False é o default da biblioteca). Isso acontece no
+        # nível da janela nativa, abaixo da página — nenhuma mudança de
+        # CSS ou JS no frontend consegue contornar essa restrição, por
+        # isso o texto do chat não podia ser selecionado mesmo sem
+        # nenhum "user-select:none" no código da página.
+        text_select=True,
     )
 
     def _on_closing():

@@ -103,12 +103,11 @@ function addMessage(role, text, messageId) {
     bubble.textContent = text;
   } else {
     bubble.innerHTML = renderMarkdown(text);
+    // Botão de copiar só nos blocos de código markdown (ex.: ```js ... ```).
+    // Texto normal é copiado via seleção com o mouse, como em qualquer
+    // editor — sem ícone extra sobre a mensagem.
     addCopyButtonsToCodeBlocks(bubble);
   }
-  // Botão de copiar mensagem: disponível tanto para o usuário quanto para
-  // o Hermes. Usa sempre o texto original (não o HTML), então funciona
-  // mesmo que a mensagem ainda mude (ex.: streaming) — lê o valor "ao vivo".
-  addMessageCopyButton(bubble, () => (role === 'user' ? bubble.textContent : text));
   bubbleWrap.appendChild(bubble);
 
   // Mensagens do usuário podem ser editadas (edição reenvia e "ramifica"
@@ -391,28 +390,6 @@ async function copyTextToClipboard(text) {
 }
 
 /**
- * Adiciona um botão "copiar" flutuante na bolha de uma mensagem (texto
- * completo da mensagem, sem formatação markdown).
- * @param {HTMLElement} bubble
- * @param {() => string} getRawText - função que retorna o texto puro atual
- */
-function addMessageCopyButton(bubble, getRawText) {
-  if (!bubble || bubble.querySelector(':scope > .msg-copy-btn')) return;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'msg-copy-btn';
-  btn.title = 'Copiar mensagem';
-  btn.textContent = '📋';
-  btn.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const ok = await copyTextToClipboard(getRawText());
-    btn.textContent = ok ? '✅' : '⚠️';
-    setTimeout(() => { btn.textContent = '📋'; }, 1500);
-  });
-  bubble.appendChild(btn);
-}
-
-/**
  * Percorre os blocos de código (<pre><code>) já renderizados dentro de uma
  * bolha e adiciona um botão de copiar em cada um, caso ainda não tenha.
  * Chamada sempre que o HTML da bolha é (re)gerado a partir de markdown,
@@ -479,10 +456,9 @@ function createMarkdownRenderScheduler(getBubble, getText) {
     const bubble = getBubble();
     if (!bubble) return;
     bubble.innerHTML = renderMarkdown(getText());
-    // innerHTML foi totalmente substituído: os botões de copiar (mensagem e
-    // blocos de código) precisam ser reinseridos a cada re-render.
+    // innerHTML foi totalmente substituído: os botões de copiar dos blocos
+    // de código precisam ser reinseridos a cada re-render.
     addCopyButtonsToCodeBlocks(bubble);
-    addMessageCopyButton(bubble, () => getText());
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
